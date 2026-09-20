@@ -1,0 +1,4 @@
+sources/
+results/
+data/typesafe102.jsonl
+__pycache__/
