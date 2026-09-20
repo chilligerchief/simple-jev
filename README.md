@@ -70,11 +70,23 @@ python hf-server/hf_server.py \
   --device cuda --dtype bfloat16 \
   --max-model-len 8192 \
   --max-batch-size 4 --max-batch-tokens 8192
+
+# Alternatively, run Laya Typed Decisions with its native encoder backend.
+# Stop the previous server first, or choose a different --port.
+python -m pip install -e './hf-server[laya]'
+USE_TF=0 python hf-server/hf_server.py \
+  --backend laya \
+  --model convaiinnovations/laya \
+  --subfolder typed-decisions \
+  --device cpu \
+  --rope-factor 2 --max-model-len 2048
 ```
 
 The first run downloads the model unless it is already cached. A local model directory can also be passed to `--model`. For CUDA or ROCm, install the appropriate PyTorch build for your hardware before installing the server.
 
 The GPU example uses [Gemma 4 26B-A4B Instruct](https://huggingface.co/google/gemma-4-26B-A4B-it). Allow memory for the full model weights, KV cache, and inference buffers; sparse expert activation does not mean only the active experts occupy memory. Use `--device auto` to let Transformers place weights across available devices. This is a launch example, not a verified full-size Gemma benchmark.
+
+The Laya example loads the specialized Typed Decisions checkpoint. Use `--device cuda` for an NVIDIA GPU, and send `"model": "convaiinnovations/laya"` in API requests. Its default native limit is 1,024 tokens per question. This example explicitly enables experimental 2× linear RoPE interpolation and a 2,048-token sequence budget, including instructions, options, and state. Both full and sliding attention rotary frequencies are halved; the local attention window is unchanged. This enables longer inputs but does not establish accuracy or calibration beyond the checkpoint's training length. Omit `--rope-factor 2` to retain the native behavior. See [Laya backend details](hf-server/README.md#laya-backend).
 
 The server listens on `http://127.0.0.1:8000`. Once the model is loaded:
 

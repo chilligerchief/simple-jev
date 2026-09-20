@@ -10,7 +10,8 @@ Or install with pip install -e './hf-server[test]' and run::
     python -m hf_server --model organization/model --device auto
 
 Request flow:
-    ClassifierRequest -> PromptCompiler -> HFBackend -> common.build_response
+    Transformers: ClassifierRequest -> PromptCompiler -> HFBackend -> common.build_response
+    Laya: ClassifierRequest -> LayaBackend -> native encoder scoring -> response
 
 common owns validation, versioned classifier wording, label semantics, and answer
 math. This file owns text-only role assembly, native chat/tokenizer boundaries,
@@ -26,6 +27,7 @@ import argparse
 import asyncio
 import copy
 import inspect
+import math
 import os
 import sys
 import threading
@@ -448,6 +450,199 @@ class HFBackend:
 # Request admission and response assembly
 
 
+def validate_rope_factor(factor):
+    if not math.isfinite(factor) or factor < 1:
+        raise ValueError("RoPE factor must be finite and at least 1")
+
+
+def configure_rope(config, factor):
+    """Configure native Transformers linear interpolation on text RoPE only.
+
+    Preserve theta, partial rotary dimensions, and multimodal text-axis settings.
+    Refuse to replace existing scaling schemes. Admission remains controlled by
+    --max-model-len; extending positional capacity does not establish accuracy.
+    """
+    validate_rope_factor(factor)
+    if factor == 1:
+        return
+    text = config.get_text_config()
+    params = copy.deepcopy(getattr(text, "rope_parameters", None))
+    if not isinstance(params, dict) or not params:
+        raise ValueError("Model does not expose supported RoPE parameters")
+    groups = [params] if "rope_type" in params else list(params.values())
+    active = [group for group in groups if group is not None]
+    if not active or any(
+        not isinstance(group, dict) or group.get("rope_type") != "default"
+        for group in active
+    ):
+        raise ValueError("RoPE extension requires unscaled default RoPE")
+    for group in active:
+        group.update(rope_type="linear", factor=float(factor))
+    text.rope_parameters = params
+    text.max_position_embeddings = int(text.max_position_embeddings * factor)
+
+
+def extend_laya_rope(agent, factor):
+    """Experimental linear position interpolation for Laya's ModernBERT encoder.
+
+    Dividing both full/sliding inverse frequencies by two maps position p to
+    its original rotary angle at p/2. The local attention window is unchanged.
+    This changes short-input behavior too; it does not establish longer-context
+    accuracy. Refuse other architectures or already-scaled RoPE rather than
+    silently composing incompatible scaling rules.
+    """
+    if factor == 1:
+        return
+    validate_rope_factor(factor)
+    encoder = agent.model.encoder
+    rotary = getattr(encoder, "rotary_emb", None)
+    if encoder.config.model_type != "modernbert" or rotary is None:
+        raise ValueError("Laya RoPE extension currently requires ModernBERT")
+    if getattr(agent, "_simple_jev_rope_extended", False):
+        raise ValueError("Laya RoPE has already been extended")
+    kinds = ("full_attention", "sliding_attention")
+    for kind in kinds:
+        if rotary.rope_type.get(kind) != "default" or not hasattr(
+            rotary, f"{kind}_inv_freq"
+        ):
+            raise ValueError("Laya RoPE extension requires unscaled full/sliding RoPE")
+    target = int(int(agent.cfg["max_len"]) * factor)
+    if target > encoder.config.max_position_embeddings:
+        raise ValueError("Extended Laya sequence exceeds encoder position capacity")
+    import torch
+
+    with torch.no_grad():
+        for kind in kinds:
+            getattr(rotary, f"{kind}_inv_freq").div_(factor)
+            getattr(rotary, f"{kind}_original_inv_freq").div_(factor)
+    agent.cfg["max_len"] = target
+    agent._simple_jev_rope_extended = True
+
+
+class LayaBackend:
+    """Native encoder adapter; no chat prefill, vocabulary labels, or KV cache.
+
+    The SDK owns option-marker formatting and temperature scaling. We retain its
+    binary Noul probability, normalize confidence to Simple Jev's max probability,
+    and omit SDK-only action fields. A lock protects the model even if the HTTP
+    coroutine is cancelled while its worker is finishing.
+    """
+
+    def __init__(self, agent, max_tokens):
+        self.agent = agent
+        self.max_tokens = min(max_tokens, int(agent.cfg["max_len"]))
+        self._lock = threading.Lock()
+
+    async def classify_native(self, request):
+        stop = threading.Event()
+        try:
+            return await asyncio.to_thread(self._classify, request, stop)
+        except asyncio.CancelledError:
+            stop.set()
+            raise
+
+    def _classify(self, request, stop):
+        import math
+        from laya.common import build_sequence, serialize_state
+
+        with self._lock:
+            if stop.is_set():
+                raise asyncio.CancelledError()
+            if request.tools or request.mm_processor_kwargs:
+                raise ValueError("Laya supports text state and text chat only")
+            if request.options.raw_logits:
+                raise ValueError("Laya raw_logits diagnostics are not supported")
+            state = request.state
+            if request.messages is not None:
+                # Chat is serialized as role/content data, not a causal chat template.
+                turns = []
+                for message in request.messages:
+                    if (
+                        not isinstance(message.content, str)
+                        or message.role not in {"system", "user", "assistant"}
+                        or message.model_extra
+                    ):
+                        raise ValueError(
+                            "Laya supports plain system/user/assistant text messages only"
+                        )
+                    turns.append({"role": message.role, "content": message.content})
+                state = turns
+            questions = {key: q.model_dump() for key, q in request.questions.items()}
+            # SDK truncates state by default. Probe with a generous token budget
+            # and reject overflow so important context cannot disappear silently.
+            for key, definition in questions.items():
+                q = self.agent._to_internal(definition)
+                state_size = len(
+                    self.agent.tok(
+                        serialize_state(state).replace(self.agent.tok.mask_token, " "),
+                        add_special_tokens=False,
+                    )["input_ids"]
+                )
+                ids, _ = build_sequence(
+                    self.agent.tok,
+                    state,
+                    q,
+                    state_size + self.agent.cfg.get("head_max_len", 192) + 65536,
+                    self.agent.cfg.get("head_max_len", 192),
+                )
+                if len(ids) > self.max_tokens:
+                    raise ValueError(
+                        f"Laya question {key!r} exceeds {self.max_tokens} input tokens"
+                    )
+            if stop.is_set():
+                raise asyncio.CancelledError()
+            result = self.agent.predict(state, questions)
+            if set(result["answers"]) != set(questions):
+                raise ValueError("Laya returned incomplete answers")
+            answers = {}
+            for key, q in questions.items():
+                source = result["answers"][key]
+                if q["type"] == "noul":
+                    value = float(source["noul"])
+                    if not math.isfinite(value) or not 0 <= value <= 1:
+                        raise ValueError("Laya returned an invalid probability")
+                    answers[key] = {"type": "noul", "noul": value}
+                    continue
+                labels = (
+                    list(q["criteria"])
+                    if q["type"] == "choice"
+                    else [str(i) for i in range(len(q["criteria"]))]
+                )
+                probs = source["probabilities"]
+                if (
+                    set(probs) != set(labels)
+                    or any(
+                        not math.isfinite(float(v)) or not 0 <= float(v) <= 1
+                        for v in probs.values()
+                    )
+                    or abs(sum(probs.values()) - 1) > 0.01
+                ):
+                    raise ValueError("Laya returned invalid option probabilities")
+                answer = {
+                    "type": q["type"],
+                    "probabilities": probs,
+                    "confidence": max(probs.values()),
+                }
+                if q["type"] == "choice":
+                    if source["choice"] not in labels:
+                        raise ValueError("Laya returned an invalid choice")
+                    answer["choice"] = source["choice"]
+                else:
+                    value = float(source["score"])
+                    if not math.isfinite(value) or not 0 <= value <= len(labels) - 1:
+                        raise ValueError("Laya returned an invalid score")
+                    answer.update(
+                        score=value,
+                        legend={str(i): c for i, c in enumerate(q["criteria"])},
+                    )
+                answers[key] = answer
+            return {
+                "model": request.model,
+                "answers": answers,
+                "usage": result["usage"],
+            }
+
+
 class OverloadedError(Exception):
     """Admission capacity is exhausted; the HTTP layer translates this to 429."""
 
@@ -527,6 +722,19 @@ class DecisionService:
         try:
             async with self._semaphore:
                 queued = time.perf_counter() - start
+                if hasattr(self.backend, "classify_native"):
+                    response = await self.backend.classify_native(request)
+                    if self.advanced_metrics:
+                        response["metadata"] = {
+                            **self.metadata,
+                            "format": "laya-native",
+                            "usage_accounting": "sum_of_question_sequence_tokens",
+                        }
+                        response["metrics"] = {
+                            "queue_seconds": queued,
+                            "total_seconds": time.perf_counter() - start,
+                        }
+                    return response
                 # Tokenization can be expensive and must not block cancellation/HTTP.
                 if hasattr(self.compiler, "compile_async"):
                     compiled = await self.compiler.compile_async(request)
@@ -710,6 +918,9 @@ def load_service(
     model_name,
     *,
     revision=None,
+    backend="transformers",
+    subfolder=None,
+    rope_factor=1,
     device="auto",
     dtype="bfloat16",
     max_model_len=16384,
@@ -728,6 +939,54 @@ def load_service(
     while branches within a request are batched. The backend's thread lock also
     prevents overlap if cancellation releases admission before a forward ends.
     """
+    validate_rope_factor(rope_factor)
+    if backend == "laya":
+        # Resolve the revision ourselves because the SDK does not expose it.
+        # Import only when selected; the existing HF installation stays usable.
+        try:
+            import laya
+        except ImportError as exc:
+            raise ImportError(
+                "Install Laya support with pip install -e './hf-server[laya]'"
+            ) from exc
+        path = model_name
+        if not Path(path).is_dir():
+            from huggingface_hub import snapshot_download
+
+            path = snapshot_download(
+                model_name,
+                revision=revision,
+                allow_patterns=[f"{subfolder}/*"]
+                if subfolder
+                else [
+                    "rl_agent_config.json",
+                    "model.safetensors",
+                    "encoder/*",
+                    "tokenizer/*",
+                ],
+            )
+        agent = laya.load(
+            path, subfolder=subfolder, device=None if device == "auto" else device
+        )
+        extend_laya_rope(agent, rope_factor)
+        return DecisionService(
+            model_name,
+            None,
+            LayaBackend(agent, max_model_len),
+            concurrency=1,
+            max_request_branches=max_request_branches,
+            metadata={
+                "backend": "laya",
+                "model_revision": revision,
+                "subfolder": subfolder,
+                "rope_factor": rope_factor,
+                "native_sequence_limit": agent.cfg["max_len"],
+            },
+        )
+    if backend != "transformers":
+        raise ValueError(f"Unknown backend: {backend}")
+    if subfolder:
+        raise ValueError("--subfolder is currently supported only with --backend laya")
     # Heavy dependencies are local to loading, so CLI help and source inspection
     # do not initialize a model or import the Transformers model classes.
     import torch
@@ -740,6 +999,7 @@ def load_service(
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, revision=revision)
     config = AutoConfig.from_pretrained(model_name, revision=revision)
+    configure_rope(config, rope_factor)
     # These checkpoint families use the image/text auto-loader even for text
     # scoring. This selection does not enable image input: the compiler remains
     # text-only and rejects unsupported media/tool requests.
@@ -751,6 +1011,7 @@ def load_service(
     model = loader.from_pretrained(
         model_name,
         revision=revision,
+        config=config,
         dtype=getattr(torch, dtype),
         device_map=device,
     )
@@ -768,7 +1029,11 @@ def load_service(
         backend,
         concurrency=1,
         max_request_branches=max_request_branches,
-        metadata={"backend": "transformers", "model_revision": revision},
+        metadata={
+            "backend": "transformers",
+            "model_revision": revision,
+            "rope_factor": rope_factor,
+        },
     )
 
 
@@ -784,6 +1049,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision")
+    parser.add_argument(
+        "--backend", choices=["transformers", "laya"], default="transformers"
+    )
+    parser.add_argument(
+        "--subfolder", help="Laya checkpoint subfolder, e.g. multilingual"
+    )
+    parser.add_argument(
+        "--rope-factor",
+        "--laya-rope-factor",
+        dest="rope_factor",
+        type=float,
+        default=1,
+        help="Experimental linear RoPE interpolation factor (default: 1, disabled)",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument(
         "--dtype", choices=["float32", "float16", "bfloat16"], default="bfloat16"

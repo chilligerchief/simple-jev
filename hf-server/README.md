@@ -109,3 +109,99 @@ without downloading weights; they do not measure answer quality.
 ```bash
 python -m pytest -c hf-server/pyproject.toml common/tests hf-server/tests -q
 ```
+
+## Laya backend
+
+Install the optional SDK and select the backend explicitly:
+
+```bash
+pip install -e './hf-server[laya,test]'
+USE_TF=0 python hf-server/hf_server.py \
+  --backend laya --model convaiinnovations/laya --device cpu
+# Add --subfolder multilingual or --subfolder typed-decisions for those checkpoints.
+```
+
+`--backend transformers` remains the default; existing Qwen and other causal HF
+model commands are unchanged. Laya loads once per process and uses its own
+encoder/option-marker format, not the common v1 assistant-prefill template.
+`--revision` selects the downloaded checkpoint revision. `--device auto` lets the
+SDK select CUDA, MPS, or CPU; `--dtype` and the HF suffix batching controls apply
+only to Transformers. Laya uses its SDK precision policy and batches the admitted
+questions together; `--max-request-branches` bounds that batch.
+
+The endpoint and `ClassifierRequest` stay the same. Send the repository ID as
+`model`, including when a subfolder is selected at startup. Text `messages` are
+serialized as a list of role/content objects. Images, tools, message extras, and
+raw-logit diagnostics are rejected. Context overflow is rejected before inference;
+the effective limit is the smaller of `--max-model-len` and the checkpoint's native
+`max_len`. Laya's native formatter still budgets/truncates question and option text
+according to its own `head_max_len` rules.
+
+Choice/score probabilities retain the SDK's temperature scaling, confidence is
+the largest returned probability, and Noul is its native binary positive-class
+probability (not the v1 nine-bin mapping). SDK action fields are omitted. Token
+usage sums the actual per-question sequences, so repeated context is counted;
+output tokens are zero. Advanced metadata identifies the format as `laya-native`.
+The shared admission queue and a model lock bound concurrent work; cancellation
+cannot interrupt an already running PyTorch forward.
+
+Validation on macOS (2026-09-20): 50 common/server tests passed, including tiny
+Qwen/Gemma backend regression tests and Laya adapter validation. Real weights for
+`convaiinnovations/laya` and `Qwen/Qwen3.5-0.8B` both returned HTTP 200 through the
+ASGI classifier route on CPU for a combined choice/score/Noul request, and rejected
+an incorrect model ID with HTTP 422. Laya used 93 input tokens; Qwen used 751.
+This validates integration, not accuracy: the small Qwen answered the example's
+Noul question incorrectly. Direct MPS loading of Qwen crashed natively on this
+Mac, so this run does not establish MPS compatibility. Laya's multilingual subfolder loading is covered by adapter tests, not real-weight
+inference in this validation run. Typed Decisions extension validation is below.
+
+
+### Experimental 2× Laya RoPE interpolation
+
+For the ModernBERT Typed Decisions checkpoint:
+
+```bash
+USE_TF=0 python hf-server/hf_server.py \
+  --backend laya --model convaiinnovations/laya \
+  --subfolder typed-decisions --device cpu \
+  --rope-factor 2 --max-model-len 2048
+```
+
+This halves full-attention and sliding-attention rotary inverse frequencies,
+so position p has the original rotary angle at p/2. It doubles the checkpoint's
+native sequence budget (1,024 → 2,048 here); the admission limit still respects
+`--max-model-len`. It does not enlarge the sliding attention window. The flag
+only supports unscaled ModernBERT RoPE and rejects other backends/architectures.
+The default factor is 1, preserving existing model behavior. This is experimental:
+long-input execution is not evidence of accuracy or calibration, and interpolation
+also changes behavior on shorter inputs. No weights or downloaded configs are
+modified; changes apply to the loaded process only.
+
+Extension validation: all 52 tests passed. Real Typed Decisions weights with 2×
+interpolation returned HTTP 200 for a 1,417-token sequence and chose the requested
+refund category. An oversized sequence returned HTTP 422 at the 2,048-token limit.
+This is an execution smoke test, not a long-context accuracy benchmark.
+
+
+### General RoPE extension
+
+`--rope-factor 2` enables experimental linear position interpolation for either
+backend. The default is 1 (no change). Finite factors greater than 1, including
+fractional factors (for example `--rope-factor 1.5`), are accepted. Rotary scaling
+uses the exact factor; resulting token capacities are rounded down to integers. `--laya-rope-factor` remains a CLI alias.
+
+```bash
+python hf-server/hf_server.py \
+  --model Qwen/Qwen3.5-0.8B --device cpu --dtype float32 \
+  --rope-factor 2 --max-model-len 2048
+```
+
+For Transformers, the server configures the text model's native linear RoPE
+implementation before loading weights, retaining theta, partial-rotation, and
+multimodal-axis settings. The text positional capacity is multiplied by the
+factor. Existing non-default scaling schemes and missing RoPE configuration are
+rejected. Vision encoder settings are not changed. Laya retains the ModernBERT
+implementation described above and doubles its checkpoint sequence budget at 2×.
+`--max-model-len` remains the independent input admission limit: RoPE scaling does
+not multiply this setting. These options are experimental, not a promise that
+all Hugging Face architectures support extended context or retain model quality.
