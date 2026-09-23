@@ -48,6 +48,36 @@ Open the [playground](http://127.0.0.1:8765/) or the [API documentation](http://
 - `assets/simple-jev.png`: the official Simple Jev mascot badge, used as the logo and favicon.
 - `assets/featherless_logo_dark.svg`: supplied Featherless logo for the “Built by Featherless.ai” attribution.
 
+## Evaluation explorer
+
+Open [Evaluations](http://127.0.0.1:8765/evaluations.html) for the six-model comparison, preferred prompt formats, expandable breakdowns, and source-backed examples. It is a static snapshot, not live inference.
+
+- The first table ranks the selected Qwen/Gemma prompt-search results on the 231 public JevBench decisions against Jev’s **published 200/231**. This development set was used for prompt selection, not held-out testing.
+- The separate decision column averages **26 English items equally**: **33,099 scored questions across 21,364 input rows**. Its Jev reference is an endpoint run, whose JevBench result was 199/231. These columns are not combined.
+- Public drill-downs show difficulty, family and primitive scores, plus all 231 source questions and saved model answers. Jev’s published source supplies correctness only; its answer labels are not invented.
+- Decision drill-downs show six domains, all 26 item scores, scoring rules, provenance and one real gold-labelled example per item. These examples are not fabricated model outputs.
+- `assets/evaluations/results.json` includes source SHA-256 hashes. `public-examples.json` loads only when the public section opens. Benchmark strings render with text-only DOM APIs.
+
+Deploy `evaluations.html`, `evaluations.css`, `evaluations.mjs` and `assets/evaluations/` with the rest of the site. The existing deployment workflow already stages these files.
+
+Regenerate the frozen data from the research workspace (no model/API calls):
+
+```bash
+python3 scripts/export_eval_page.py --workspace /workspace/open-jev
+node --test website/tests/*.test.mjs
+```
+
+The exporter requires sibling `simple-jev-eval`, `simple-jev-prompt-lab` and `reports` artifacts. It cross-checks canonical evaluator manifests, public row IDs, correct counts, matched decision coverage and aggregate scores before writing website data. Normal hosting and tests use the bundled snapshot and do not need those research checkouts.
+
+Optional browser integration checks require Playwright and its Chromium headless shell, system libraries and fonts:
+
+```bash
+# Resolve an existing Playwright installation, or set PLAYWRIGHT_MODULE to its index.mjs.
+node website/tests/evaluations.browser.mjs
+```
+
+The browser checks start and stop their own local HTTP server. They cover desktop/mobile layouts, sorting, keyboard disclosures, deep links, filters, empty states, retries, and inert dataset text; screenshots go to `/tmp/simple-jev-evaluations-{desktop,mobile}.png`.
+
 ## API behavior
 
 The client uses `https://simple-jev-demo-api.featherless.ai/v1/models` and `/v1/classifier`, with Qwen3.6-35B-A3B selected initially. The model list is fetched on load. Context is sent only after a visitor presses Run (or explicitly invokes the page's `run_classifier` WebMCP tool).
