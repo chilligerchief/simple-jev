@@ -41,9 +41,10 @@
           <tbody id="leaderboard"></tbody>
         </table>
       </div>
+      <p class="comparison-legend">Green highlights scores above Jev. Grey marks the baseline; wins, losses and ties are labelled per benchmark. “pp” means percentage points—not statistical significance.</p>
       <div class="eval-notes">
-        <p><strong>¹ Published reference vs. optimized prompts.</strong> Jev’s <strong>200/231 (86.58%)</strong> is the published Jev 1.13.0 result on these exact public IDs. Qwen/Gemma scores are best observed prompt-selection results, <strong>not held-out accuracy</strong>. All 231 decisions count equally.</p>
-        <p><strong>² A different run and denominator.</strong> Decision accuracy is the equal-weight mean of 26 English project/configuration/category items, not pooled accuracy or an average of category averages. Jev’s <strong>87.15%</strong> is our endpoint reference. That reference scored <strong>199/231</strong> on JevBench; it is not the published 200/231 result. The two columns must not be combined.</p>
+        <p><strong>¹ JevBench public set.</strong> Jev’s baseline is <strong>200/231 (86.58%)</strong>. All 231 decisions count equally. Qwen/Gemma scores use their preferred prompt formats, selected on this development set—<strong>not held-out accuracy</strong>.</p>
+        <p><strong>² Decision benchmarks.</strong> Accuracy is the equal-weight mean of 26 English project/configuration/category items, not pooled accuracy or an average of category averages. Jev’s baseline is <strong>87.15%</strong>. Each column is a separate evaluation.</p>
       </div>
       <p class="eval-jumps"><a href="#public-set">Explore public questions ↓</a><a href="#decision-set">Explore decision benchmarks ↓</a><a href="#methodology">Methodology &amp; sources ↓</a></p>
     </section>

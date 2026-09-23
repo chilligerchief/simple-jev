@@ -1,13 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { percent, rankModels, categoryScores, filterExamples, filterItems } from '../evaluations.mjs';
+import { comparison, percent, rankModels, categoryScores, filterExamples, filterItems } from '../evaluations.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const data = JSON.parse(read('../assets/evaluations/results.json'));
 const examples = JSON.parse(read('../assets/evaluations/public-examples.json'));
 const models = data.models;
 const ids = models.map(m => m.id).sort();
+
+test('comparison highlights strict winners, not the baseline or ties', () => {
+  assert.equal(comparison(214 / 231, 200 / 231), 'win');
+  assert.equal(comparison(199 / 231, 200 / 231), 'loss');
+  assert.equal(comparison(1, 1), 'tie');
+  assert.equal(comparison(0.3, 0.1 + 0.2), 'tie');
+  assert.equal(comparison(200 / 231, 200 / 231, true), 'baseline');
+  assert.equal(comparison(1, 0), 'win');
+  assert.equal(comparison(0, 1), 'loss');
+  assert.equal(comparison(0, 0), 'tie');
+});
 
 test('headline matches the agreed table, with the published Jev baseline', () => {
   assert.deepEqual(models.map(m => [m.id, m.publicCorrect, percent(m.decisionScore)]), [
@@ -112,7 +123,8 @@ test('page has accessible disclosures, prompt column, caveats, sources and no un
   for (const id of ['public-set', 'decision-set', 'methodology']) assert.ok(html.includes(`<details id="${id}"`));
   assert.match(html, /Preferred prompt format/);
   assert.match(html, /not held-out accuracy/);
-  assert.match(html, /199\/231/);
+  assert.doesNotMatch(html, /199\/231/);
+  assert.match(html, /Jev’s baseline is <strong>200\/231 \(86\.58%\)/);
   assert.match(html, /534-decision/);
   assert.match(html, /≥0.5/);
   assert.match(html, /<noscript>/);

@@ -1,4 +1,5 @@
 .scroll-hint { display: none; }
+.comparison-legend { font-size: .84rem; margin-bottom: 18px; }
 .eval-page { padding-block: 48px 30px; }
 .eval-page h1 { font-size: clamp(2.2rem, 5vw, 4rem); letter-spacing: -.045em; line-height: 1.1; margin: 16px 0; }
 .eval-lead { max-width: 760px; font-size: 1.13rem; margin-bottom: 28px; }
@@ -18,11 +19,22 @@
 .headline-table td:nth-child(n+4) { width: 24%; }
 .headline-table button { border: 0; background: transparent; padding: 0; text-align: left; font-weight: 650; }
 .eval-page small { display: block; font-size: .74rem; color: var(--muted); font-weight: 400; margin-top: 4px; }
-.reference-row { background: #f5f9ec; }
-.score-number { font-size: 1.3rem; font-weight: 700; }
+.reference-row { background: #f0f1f0; color: #737a74; }
+.eval-page .reference-row th, .reference-row .score-number { font-weight: 500; }
+.winner-row { background: #f4faef; }
+.winner-row > th { color: #286520; }
+.comparison-win { background: #edf7e7; color: #286520; font-weight: 700; }
+.comparison-baseline { background: #f0f1f0; color: #737a74; font-weight: 400; }
+.eval-page .comparison-win .comparison-label { color: #286520; font-weight: 650; }
+.eval-page .comparison-loss .comparison-label { color: #875447; }
+.eval-page .comparison-baseline .comparison-label { color: #737a74; }
+.eval-page .comparison-tie .comparison-label { color: var(--muted); }
+.score-number { font-size: 1.3rem; font-weight: 700; color: var(--muted); }
 .score-track { height: 4px; border-radius: 4px; background: var(--line); width: 100%; margin: 7px 0; }
-.score-fill { height: 100%; background: var(--orange); border-radius: inherit; }
-.reference-row .score-fill { background: #6d922a; }
+.score-fill { height: 100%; background: #b8bdb8; border-radius: inherit; }
+.reference-row .score-fill { background: #858c86; }
+.winning-score .score-fill { background: #39822f; }
+.winning-score .score-number { color: #286520; }
 .eval-notes { background: #edf1e8; border-left: 3px solid #7f9857; border-radius: 0 8px 8px 0; padding: 18px 22px; font-size: .88rem; }
 .eval-notes p + p { margin-top: 12px; }
 .eval-notes strong { color: var(--ink); }

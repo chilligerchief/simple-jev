@@ -33,6 +33,13 @@ try {
   assert.match(await jevRow.innerText(), /200 — 86.58%/);
   assert.doesNotMatch(await jevRow.innerText(), /published/i);
   assert.match(await jevRow.innerText(), /Native/);
+  assert.equal(await page.locator('#leaderboard .winner-row').count(), 3);
+  assert.equal(await page.locator('#leaderboard .comparison-win').count(), 6);
+  assert.equal(await page.locator('#leaderboard .comparison-loss').count(), 4);
+  assert.equal(await jevRow.locator('.comparison-baseline').count(), 2);
+  assert.equal(await jevRow.locator('.comparison-win').count(), 0);
+  assert.equal(await jevRow.locator('.score-fill').first().evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(133, 140, 134)');
+  assert.equal(await page.locator('#leaderboard .comparison-win .score-fill').first().evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(57, 130, 47)');
   assert.equal(requests.some(r => r.includes('public-examples.json')), false, 'Public examples must load lazily');
   await page.click('[data-sort="decisionScore"]');
   assert.equal(await page.locator('#decision-heading').getAttribute('aria-sort'), 'descending');
@@ -44,6 +51,12 @@ try {
   assert.equal(await page.locator('#public-example tbody tr').count(), 6);
   await page.selectOption('#public-dimension', 'family');
   assert.equal(await page.locator('#public-breakdown tbody tr').count(), 18);
+  assert.equal(await page.locator('#public-breakdown .comparison-baseline').count(), 18);
+  assert.ok(await page.locator('#public-breakdown .comparison-win').count() > 0);
+  assert.ok(await page.locator('#public-breakdown .comparison-loss').count() > 0);
+  assert.ok(await page.locator('#public-breakdown .comparison-tie').count() > 0);
+  assert.match(await page.locator('#public-breakdown thead th').nth(1).innerText(), /Jev.*baseline/);
+  assert.equal(await page.locator('#public-example .comparison-baseline').count(), 1);
   await page.selectOption('#example-tier', 'easy');
   await page.selectOption('#example-type', 'score');
   assert.equal(await page.locator('#example-id option').count(), 0);
@@ -68,6 +81,10 @@ try {
   assert.equal(await page.locator('#decision-items > details').count(), 1);
   await page.locator('#decision-items > details > summary').click();
   assert.equal(await page.locator('#decision-items tbody tr').count(), 6);
+  assert.equal(await page.locator('#decision-items .comparison-baseline').count(), 1);
+  assert.equal(await page.locator('#decision-items .comparison-label').count(), 6);
+  assert.equal(await page.locator('#category-breakdown .comparison-baseline').count(), 6);
+  assert.ok(await page.locator('#category-breakdown .comparison-win').count() > 0);
   assert.match(await page.locator('#decision-items').innerText(), /Dataset gold answer/);
   await page.fill('#decision-search', 'not-a-benchmark');
   assert.equal(await page.locator('#decision-items > details').count(), 0);

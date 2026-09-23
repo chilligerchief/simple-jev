@@ -1,5 +1,18 @@
 // Frozen data only: no model requests, credentials, storage, or executable dataset content.
 export const percent = (value) => `${(value * 100).toFixed(2)}%`;
+export function comparison(value, baseline, isBaseline = false) {
+  if (isBaseline) return 'baseline';
+  if (Math.abs(value - baseline) < 1e-12) return 'tie';
+  return value > baseline ? 'win' : 'loss';
+}
+function markComparison(cell, value, baseline, isBaseline, showDelta = true) {
+  const result = comparison(value, baseline, isBaseline);
+  cell.classList.add(`comparison-${result}`);
+  const labels = { baseline: 'Jev baseline', win: 'Won vs Jev', loss: 'Lost vs Jev', tie: 'Tied with Jev' };
+  const delta = (value - baseline) * 100;
+  const suffix = showDelta && ['win', 'loss'].includes(result) ? ` · ${delta > 0 ? '+' : ''}${delta.toFixed(2)} pp` : '';
+  cell.append(node('small', labels[result] + suffix, 'comparison-label'));
+}
 export function rankModels(models, key) {
   if (!['publicCorrect', 'decisionScore'].includes(key)) throw new Error('Unknown ranking');
   const sorted = [...models].sort((a, b) => b[key] - a[key]);
@@ -80,16 +93,20 @@ async function init() {
   const models = data.models;
   function leaderboard(key) {
     const body = $('leaderboard'); body.replaceChildren();
+    const baseline = models.find(model => model.id === 'jev');
     for (const model of rankModels(models, key)) {
-      const row = node('tr', null, model.id === 'jev' ? 'reference-row' : '');
+      const row = node('tr', null, model.id === 'jev' ? 'reference-row' : model[key] > baseline[key] ? 'winner-row' : '');
       const name = rowHeader(model.name);
       const policy = node('td'); policy.append(node('code', model.policy));
       row.append(node('td', model.rank), name, policy);
-      for (const [value, display, note] of [[model.publicCorrect / 231, `${model.publicCorrect} — ${percent(model.publicCorrect / 231)}`, 'of 231 decisions'],
-        [model.decisionScore, percent(model.decisionScore), 'Mean of 26 items']]) {
-        const cell = node('td'); const track = node('div', null, 'score-track'); track.setAttribute('aria-hidden', 'true');
+      for (const [value, reference, display, note] of [[model.publicCorrect / 231, baseline.publicCorrect / 231, `${model.publicCorrect} — ${percent(model.publicCorrect / 231)}`, 'of 231 decisions'],
+        [model.decisionScore, baseline.decisionScore, percent(model.decisionScore), 'Mean of 26 items']]) {
+        const winning = model.id !== 'jev' && value > reference;
+        const cell = node('td', null, winning ? 'winning-score' : ''); const track = node('div', null, 'score-track'); track.setAttribute('aria-hidden', 'true');
         const fill = node('div', null, 'score-fill'); fill.style.width = `${value * 100}%`; track.append(fill);
-        cell.append(node('span', display, 'score-number'), track, node('small', note)); row.append(cell);
+        cell.append(node('span', display, 'score-number'), track, node('small', note));
+        markComparison(cell, value, reference, model.id === 'jev');
+        row.append(cell);
       }
       body.append(row);
     }
@@ -104,14 +121,17 @@ async function init() {
 
   function breakdown(id, groups, publicSet) {
     const table = $(id); table.replaceChildren(); table.className = 'breakdown-table';
-    const body = tableHeader(table, [publicSet ? 'Group / decisions' : 'Domain / items', ...models.map(m => m.name)]);
+    const comparisonModels = [...models].sort((a, b) => Number(b.id === 'jev') - Number(a.id === 'jev'));
+    const body = tableHeader(table, [publicSet ? 'Group / decisions' : 'Domain / items', ...comparisonModels.map(m => m.id === 'jev' ? `${m.name} · baseline` : m.name)]);
     for (const group of groups) {
       const row = node('tr'); const name = rowHeader(group.name.replaceAll('_', ' '));
       name.append(node('small', `${group.rows} ${publicSet ? 'decisions' : 'items'}`)); row.append(name);
-      for (const model of models) {
+      for (const model of comparisonModels) {
         const value = group.scores[model.id];
-        const cell = node('td', percent(publicSet ? value / group.rows : value));
+        const denominator = publicSet ? group.rows : 1;
+        const cell = node('td', percent(value / denominator));
         if (publicSet) cell.append(node('small', `${value} / ${group.rows}`));
+        markComparison(cell, value / denominator, group.scores.jev / denominator, model.id === 'jev');
         row.append(cell);
       }
       body.append(row);
@@ -134,9 +154,11 @@ async function init() {
       body.append(node('p', item.description), node('p', item.scoring));
       if (item.scopeNote) body.append(node('p', item.scopeNote));
       const table = node('table'); const scores = tableHeader(table, ['Model', 'Item accuracy']);
-      for (const model of [...models].sort((a,b) => item.scores[b.id] - item.scores[a.id])) {
-        const row = node('tr', null, model.id === 'jev' ? 'reference-row' : '');
-        row.append(rowHeader(model.name), node('td', percent(item.scores[model.id]))); scores.append(row);
+      for (const model of [...models].sort((a,b) => Number(b.id === 'jev') - Number(a.id === 'jev') || item.scores[b.id] - item.scores[a.id])) {
+        const row = node('tr', null, model.id === 'jev' ? 'reference-row' : comparison(item.scores[model.id], item.scores.jev) === 'win' ? 'winner-row' : '');
+        const score = node('td', percent(item.scores[model.id]));
+        markComparison(score, item.scores[model.id], item.scores.jev, model.id === 'jev');
+        row.append(rowHeader(model.id === 'jev' ? `${model.name} · baseline` : model.name), score); scores.append(row);
       }
       body.append(scrollTable(table, `${item.project} item scores`), node('h4', 'An actual evaluation example'),
         node('p', `Case ${item.example.id} · ${item.example.suite}. A short case from the first constituent suite, not a representative sample of model quality.`),
@@ -160,10 +182,12 @@ async function init() {
     box.append(node('h4', `${example.id} · ${example.family.replaceAll('_', ' ')}`), contextBlock(example.state),
       node('h4', 'Question / permitted answers'), pre(example.question), node('p', `Gold answer: ${pretty(example.expected)}`, 'gold-answer'));
     const table = node('table'); const body = tableHeader(table, ['Model', 'Recorded answer', 'Outcome']);
-    for (const model of models) {
-      const answer = example.answers[model.id]; const row = node('tr', null, model.id === 'jev' ? 'reference-row' : '');
-      row.append(rowHeader(model.name), node('td', answer.predicted ?? 'Label not published'),
-        node('td', answer.correct ? 'Correct' : 'Incorrect', answer.correct ? 'correct' : 'incorrect')); body.append(row);
+    for (const model of [...models].sort((a,b) => Number(b.id === 'jev') - Number(a.id === 'jev'))) {
+      const answer = example.answers[model.id];
+      const row = node('tr', null, model.id === 'jev' ? 'reference-row' : answer.correct && !example.answers.jev.correct ? 'winner-row' : '');
+      const outcome = node('td', answer.correct ? 'Correct' : 'Incorrect');
+      markComparison(outcome, Number(answer.correct), Number(example.answers.jev.correct), model.id === 'jev', false);
+      row.append(rowHeader(model.id === 'jev' ? `${model.name} · baseline` : model.name), node('td', answer.predicted ?? 'Label not published'), outcome); body.append(row);
     }
     box.append(scrollTable(table, 'Recorded model answers'));
     $('public-example').append(box);
