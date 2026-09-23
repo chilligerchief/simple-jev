@@ -349,6 +349,33 @@ custom client fields. For example, `stream: true` still returns ordinary JSON,
 and `max_tokens` does not change the number of questions scored. Declared fields
 remain validated; misspelled fields inside questions/options are rejected.
 
+## Optional prompt policies
+
+`--classifier-prompt-policy` selects `baseline` (default), `examples_binary`,
+`repeat_state`, or `strict_mix_repeat2`. It is a startup setting, not a request
+field or header. Invalid names fail argument parsing; non-baseline policies
+with `--backend laya` fail before loading weights.
+
+| Policy | Formatting | Noul |
+|---|---|---|
+| `baseline` | Unchanged common v1, including plain-text chat support | Nine bins mapped to [0.01,0.99] |
+| `examples_binary` | Strict rules + worked examples; state once | Restricted probability of yes over no/yes, in [0,1] |
+| `repeat_state` | Same as examples_binary; state repeated twice | Same binary probability |
+| `strict_mix_repeat2` | Strict rules; full user-input block repeated twice | Original evaluated nine-bin wording and [0.01,0.99] mapping |
+
+Named policies require `state`; `messages` return 422. Existing text-only
+restrictions still apply. Choice branches use a fixed three-line native
+`[thinking]` prefill, not generated reasoning. Score/Noul do not use this prefill.
+The tokenizer must preserve the prefill and every allowed single-token answer
+boundary. All policy content counts toward the complete branch token limit.
+
+Binary Noul responses contain only `type` and `noul`, including with advanced
+metrics; nine-bin rating diagnostics do not apply. Choice/Score response math
+and usage accounting are unchanged. Advanced metadata reports a distinct
+`hf-<policy>-v1` template version. Common v1 itself is not modified. These formats
+do not change the model precision, inference backend, cache, batching, workers
+or scheduler. See [model recommendations](README.md#optional-prompt-formats-transformers-only).
+
 ## Server startup arguments — exhaustive list
 
 These are process settings, not HTTP request fields. Both `simple-jev` and
@@ -358,6 +385,7 @@ These are process settings, not HTTP request fields. Both `simple-jev` and
 | --- | --- | --- |
 | `--model` | Required | HF model ID or local pretrained model directory. Also the accepted request `model` string. |
 | `--revision` | Unset | HF revision passed to tokenizer, config and model loading. |
+| `--classifier-prompt-policy` | `baseline` | Transformers-only opt-in prompt format; see the policy table above. |
 | `--device` | `auto` | Passed as Transformers `device_map`; examples: `auto`, `cpu`, `cuda:0`. ROCm PyTorch also uses CUDA device naming. |
 | `--dtype` | `bfloat16` | One of `float32`, `float16`, `bfloat16`. |
 | `--max-model-len` | `16384` | Maximum token length of each compiled branch. |

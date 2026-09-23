@@ -75,6 +75,50 @@ reads logits without sampling any output tokens. Set
 `ENABLE_OPEN_JEV_ADVANCED_METRICS=1` to include detailed timing and metadata.
 Standard completion settings such as `max_tokens` and `temperature` are ignored.
 
+## Optional prompt formats (Transformers only)
+
+Select a server-wide format explicitly; the default `baseline` leaves the
+existing common v1 prompts and scoring unchanged:
+
+```bash
+simple-jev --model Qwen/Qwen3.8-27B --device auto \
+  --classifier-prompt-policy examples_binary
+```
+
+| Model | Policy |
+|---|---|
+| Qwen/Qwen3.8-27B | `examples_binary` |
+| Qwen/Qwen3.6-35B-A3B | `repeat_state` |
+| Qwen/Qwen3.5-4B | `strict_mix_repeat2` |
+| google/gemma-4-26B-A4B-it | `strict_mix_repeat2` |
+| google/gemma-4-12B-it | `strict_mix_repeat2` |
+
+- `examples_binary`: strict decision rules, worked examples, raw text/pretty
+  JSON state once, and binary no/yes Noul scoring.
+- `repeat_state`: the same format with an explicitly marked second state copy.
+- `strict_mix_repeat2`: strict rules, the entire user block twice, and the
+  evaluated nine-bin Noul wording/scoring. No extra worked-example block.
+
+The three named policies accept **text/JSON `state` only**, not `messages`;
+use `baseline` to preserve text chat turns. HF still rejects images/tools.
+Choice branches prefill three fixed `[thinking]` lines through the model's native
+chat template; Score/Noul branches answer directly. This does not generate
+reasoning or output tokens. A template that drops the fixed prefill is rejected.
+Binary Noul returns `{"type":"noul","noul":P(yes)}` in [0,1], with no nine-bin
+0.01–0.99 remapping or nested rating diagnostics. Choice/Score math is unchanged.
+
+These formats came from vLLM prompt-selection experiments, not fresh HF quality
+or throughput measurements. Native tokenization and numerical results may
+vary by runtime. Repetition consumes additional context; the complete rendered
+branch remains subject to `--max-model-len`. Advanced metadata identifies
+`hf-<policy>-v1` instead of the baseline `v1` template.
+
+This is a prompt/scoring-adapter addition only: model loading, precision, cache
+reuse, batching, locking, admission and inference code are unchanged. No worker,
+stream, FP8, kernel, or other performance optimizations are included. Laya keeps
+its native formatting and rejects non-baseline prompt policies at startup.
+Implementation: `hf_prompt_policies.py`, packaged alongside `hf_server.py`.
+
 ## Shared-prefix execution
 
 The compiler calls `common.prepare_prompt(request, version="v1")`, assembles the
@@ -99,7 +143,8 @@ not imply multimodal input support. Models need a compatible Transformers cache
 that supports copying and `reorder_cache`, a chat template, and single-token
 rating/choice labels. Arbitrary model compatibility is not guaranteed.
 
-The shared v1 prompt and scoring rules are the source of truth for this server.
+The shared v1 prompt and scoring rules are the source of truth for the default
+`baseline` format; opt-in policy differences are described above.
 It does not claim exact numeric equivalence with another inference engine.
 Tests compare reused-cache logits against independent full-prompt forwards for
 tiny Qwen3, Qwen3.5, Gemma2 and Gemma4 models, and exercise API validation,

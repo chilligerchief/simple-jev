@@ -1,4 +1,4 @@
-"""Single-file Hugging Face classifier server using the shared common modules.
+"""Standalone Hugging Face classifier server using the shared common modules.
 
 Run directly from a checkout (the sibling common/ folder is required)::
 
@@ -13,14 +13,16 @@ Request flow:
     Transformers: ClassifierRequest -> PromptCompiler -> HFBackend -> common.build_response
     Laya: ClassifierRequest -> LayaBackend -> native encoder scoring -> response
 
-common owns validation, versioned classifier wording, label semantics, and answer
-math. This file owns text-only role assembly, native chat/tokenizer boundaries,
+common owns validation, default versioned classifier wording, label semantics,
+and answer math. hf_prompt_policies adds opt-in formatting and binary Noul
+adaptation without modifying common. This file owns text-only role assembly,
+native chat/tokenizer boundaries,
 shared-prefix inference, queue/cancellation controls, usage accounting, HTTP, and
 startup. Model weights load only when load_service/main is called.
 
 The sections below follow the data flow and retain the implementation notes for
 cache ownership, per-row logit selection, and asynchronous cleanup. Tests live in
-tests/; no separate simple_jev package or duplicate classifier template is needed.
+tests/; no separate simple_jev package or duplicate baseline template is needed.
 """
 
 import argparse
@@ -56,6 +58,9 @@ from common import (
     prepare_prompt,
 )
 from common.prompt_builder import DEFAULT_TEMPLATE_VERSION, canonical
+from hf_prompt_policies import (
+    PROMPT_POLICIES, format_branch, prepare_policy, restore_binary_noul, validate_policy,
+)
 
 # Shared plan to native chat and tokens
 
@@ -68,6 +73,7 @@ class Branch:
     prefix. output_ids contains the next-token vocabulary IDs, in the same order
     as the shared question's output_labels. Messages/prefix remain available for
     inspection; they are not reconstructed from tokens during inference.
+    reasoning_content is an optional fixed native assistant prefill, not output.
 
     render_only compilation leaves both ID lists empty and is not executable.
     frozen prevents attribute reassignment, not mutation of the contained lists.
@@ -78,6 +84,7 @@ class Branch:
     output_ids: list[int]
     messages: list[dict]
     answer_prefix: str
+    reasoning_content: str | None = None
 
 
 @dataclass
@@ -87,10 +94,13 @@ class CompiledRequest:
     Keep this pair together until response scoring: branch IDs and output order
     must be interpreted against the plan that created them. Branch order initially
     matches plan order; the backend may reorder execution for efficient padding.
+    binary_noul_keys identifies temporary Choice questions that the HF response
+    adapter must restore to Noul after common scores their no/yes logits.
     """
 
     plan: PromptPlan
     branches: list[Branch]
+    binary_noul_keys: tuple[str, ...] = ()
 
 
 def common_prefix(sequences):
@@ -113,15 +123,18 @@ def common_prefix(sequences):
 class PromptCompiler:
     """Render shared classifier plans with a model's native tokenizer template."""
 
-    def __init__(self, tokenizer, max_tokens=16384, version=DEFAULT_TEMPLATE_VERSION):
+    def __init__(self, tokenizer, max_tokens=16384, version=DEFAULT_TEMPLATE_VERSION, prompt_policy="baseline"):
         """Store the renderer, complete-prompt token limit, and shared version.
 
         Version validation is performed by common.prepare_prompt during compile.
+        Named prompt policies are opt-in HF formatting/scoring adaptations.
         This class does not load a tokenizer or model on its own.
         """
         self.tokenizer = tokenizer
         self.max_tokens = max_tokens
         self.version = version
+        validate_policy(prompt_policy)
+        self.prompt_policy = prompt_policy
 
     def compile(self, request: ClassifierRequest, *, render_only=False):
         """Validate text input and compile one branch per shared-plan question.
@@ -150,7 +163,7 @@ class PromptCompiler:
         ):
             raise ValueError("HF text reference accepts plain text chat only")
 
-        plan = prepare_prompt(request, version=self.version)
+        plan, binary_noul_keys = prepare_policy(request, self.version, self.prompt_policy)
         system = plan.system_prompt_prefix + plan.prefix_instruction
         branches = []
         for question in plan.questions:
@@ -176,20 +189,37 @@ class PromptCompiler:
                     messages.insert(0, {"role": "system", "content": system})
                 messages.append({"role": "user", "content": content})
 
+            messages, reasoning_content = format_branch(
+                messages, request, question.question_id, self.prompt_policy
+            )
             ids, output_ids = [], []
             if not render_only:
                 # Render first, then append incomplete JSON to the open assistant
                 # position. Do not create a completed assistant message or add
                 # a closing brace/EOS before the next-token scoring position.
-                text = (
-                    self.tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                        enable_thinking=False,
+                if self.prompt_policy == "baseline":
+                    text = (
+                        self.tokenizer.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True,
+                            enable_thinking=False,
+                        )
+                        + question.answer_prefix
                     )
-                    + question.answer_prefix
-                )
+                else:
+                    # Supply a fixed assistant prefill via the native template;
+                    # this does not run a generation or reasoning stage.
+                    assistant = {"role": "assistant", "content": question.answer_prefix}
+                    if reasoning_content is not None:
+                        assistant["reasoning_content"] = reasoning_content
+                    text = self.tokenizer.apply_chat_template(
+                        messages + [assistant], tokenize=False,
+                        add_generation_prompt=False, continue_final_message=True,
+                        enable_thinking=reasoning_content is not None,
+                    )
+                    if reasoning_content is not None and reasoning_content not in text:
+                        raise ValueError("Model chat template did not preserve fixed policy reasoning content")
                 # The template already supplies special tokens. Adding another
                 # BOS/EOS during encode would alter the intended model input.
                 ids = self.tokenizer.encode(text, add_special_tokens=False)
@@ -217,9 +247,10 @@ class PromptCompiler:
                     output_ids,
                     messages,
                     question.answer_prefix,
+                    reasoning_content,
                 )
             )
-        return CompiledRequest(plan, branches)
+        return CompiledRequest(plan, branches, binary_noul_keys)
 
 
 # Inference result
@@ -761,6 +792,7 @@ class DecisionService:
                     output_tokens=result.metrics.get("branch_output_tokens", 0),
                     advanced=self.advanced_metrics,
                 )
+                restore_binary_noul(response, compiled.binary_noul_keys)
                 # Common handles answer filtering and authoritative version data;
                 # HF only adds backend-specific metadata and execution timings.
                 if self.advanced_metrics:
@@ -918,6 +950,7 @@ def load_service(
     model_name,
     *,
     revision=None,
+    prompt_policy="baseline",
     backend="transformers",
     subfolder=None,
     rope_factor=1,
@@ -940,6 +973,9 @@ def load_service(
     prevents overlap if cancellation releases admission before a forward ends.
     """
     validate_rope_factor(rope_factor)
+    validate_policy(prompt_policy)
+    if backend == "laya" and prompt_policy != "baseline":
+        raise ValueError("Prompt policies apply only to --backend transformers; Laya uses native formatting")
     if backend == "laya":
         # Resolve the revision ourselves because the SDK does not expose it.
         # Import only when selected; the existing HF installation stays usable.
@@ -1017,7 +1053,7 @@ def load_service(
     )
     # PromptCompiler's default comes from common.DEFAULT_TEMPLATE_VERSION.
     # Keep one compiler/backend pair for the service's loaded model/tokenizer.
-    compiler = PromptCompiler(tokenizer, max_tokens=max_model_len)
+    compiler = PromptCompiler(tokenizer, max_tokens=max_model_len, prompt_policy=prompt_policy)
     backend = HFBackend(
         model,
         max_batch_size=max_batch_size,
@@ -1031,6 +1067,7 @@ def load_service(
         max_request_branches=max_request_branches,
         metadata={
             "backend": "transformers",
+            "prompt_policy": prompt_policy,
             "model_revision": revision,
             "rope_factor": rope_factor,
         },
@@ -1049,6 +1086,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision")
+    parser.add_argument(
+        "--classifier-prompt-policy", dest="prompt_policy",
+        choices=PROMPT_POLICIES, default="baseline",
+        help="Opt-in Transformers prompt format; named policies require text/JSON state",
+    )
     parser.add_argument(
         "--backend", choices=["transformers", "laya"], default="transformers"
     )
