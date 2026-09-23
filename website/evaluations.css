@@ -98,6 +98,7 @@
 .vision-matrix td { white-space: normal; }
 .vision-winner { background: #e2f0fb; box-shadow: inset 0 -3px #397699; color: #194f73; font-weight: 700; }
 .eval-page .winner-badge { display: table; padding: 3px 8px; margin-top: 7px; border-radius: 5px; background: #245e82; color: white; font-weight: 650; font-size: .7rem; }
+.headline-table .winner-badge { display: inline-block; padding: 4px 14px; }
 .vision-key { font-size: .88rem; margin-top: 14px; }
 .methodology p + p { margin-top: 12px; }
 .methodology li { margin-bottom: 10px; }
