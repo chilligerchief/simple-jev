@@ -169,7 +169,9 @@ def main():
         assert manifest == load(ev / 'suites/english' / (suite_id + '.json')), suite_id
         dataset = ((root / manifest_path).parent / manifest['dataset']).resolve()
         rows = lines(dataset.relative_to(root))
-        row = rows[0]  # Deterministic source example, never selected by model outcome.
+        # CIFAR's first cat is hard to recognize at 32x32. Use a clearer airplane
+        # chosen visually, without consulting any model's answer or changing scores.
+        row = next(r for r in rows if r['id'] == 'image-000010') if suite_id == 'vision-cifar10' else rows[0]
         image_path = (dataset.parent / row['image_path']).resolve()
         image = read(image_path.relative_to(root))
         assert hashlib.sha256(image).hexdigest() == row['image_sha256']
@@ -192,6 +194,7 @@ def main():
             'nativeMetric': manifest['headline_metric'], 'nativeScores': native_scores,
             'source': manifest['source'],
             'example': {'id': row['id'], 'question': row['question'], 'gold': gold,
+                        'selection': 'Selected for visual clarity, not model performance.' if suite_id == 'vision-cifar10' else 'First source case, not selected for model performance.',
                         'options': row.get('options'), 'imageSha256': row['image_sha256'],
                         'image': 'assets/evaluations/images/' + image_name},
         })

@@ -28,6 +28,18 @@ try {
   page.on('request', request => requests.push(request.url()));
   await page.goto(`${url}/evaluations.html`);
   await page.waitForSelector('#leaderboard tr');
+  const sectionHeader = page.locator('#public-set > summary');
+  assert.ok(await sectionHeader.locator('.expand-mark .when-closed').isVisible());
+  assert.match(await sectionHeader.locator('.section-action').innerText(), /Click to expand: see the original JevBench dataset questions/);
+  assert.equal(await sectionHeader.locator('.when-open').isVisible(), false);
+  const closedColor = await sectionHeader.evaluate(e => getComputedStyle(e).backgroundColor);
+  await sectionHeader.hover();
+  assert.notEqual(await sectionHeader.evaluate(e => getComputedStyle(e).backgroundColor), closedColor);
+  assert.equal(await sectionHeader.locator('.expand-mark').evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(40, 74, 34)');
+  await sectionHeader.screenshot({ path: '/tmp/simple-jev-section-hover.png' });
+  await page.mouse.move(0, 0);
+  await sectionHeader.focus();
+  assert.notEqual(await sectionHeader.evaluate(e => getComputedStyle(e).backgroundColor), closedColor);
   assert.equal(await page.locator('#leaderboard tr').count(), 6);
   const jevRow = page.locator('#leaderboard .reference-row');
   assert.match(await jevRow.innerText(), /200 — 86.58%/);
@@ -53,6 +65,9 @@ try {
   await page.screenshot({ path: '/tmp/simple-jev-evaluations-desktop.png', fullPage: true });
   await page.click('a[href="#public-set"]');
   await page.waitForSelector('#public-example tbody tr');
+  assert.equal(await sectionHeader.locator('.expand-mark .when-closed').isVisible(), false);
+  assert.equal(await sectionHeader.locator('.section-action').isVisible(), false);
+  assert.ok(await sectionHeader.locator('.when-open').isVisible());
   assert.equal(await page.locator('#example-id option').count(), 231);
   assert.equal(await page.locator('#public-example tbody tr').count(), 6);
   await page.selectOption('#public-dimension', 'family');
@@ -98,12 +113,32 @@ try {
 
   await page.click('a[href="#vision-set"]');
   assert.equal(await page.locator('#vision-breakdown tbody tr').count(), 7);
+  assert.equal(await page.locator('#vision-breakdown thead th').last().innerText(), 'Jev 1.13');
+  const snapshot = JSON.parse(await readFile(resolve(root, 'assets/evaluations/results.json'), 'utf8'));
+  const visionHeaders = await page.locator('#vision-breakdown thead th').allTextContents();
+  for (let i = 0; i < snapshot.visionItems.length; i++) {
+    const item = snapshot.visionItems[i];
+    const cells = page.locator('#vision-breakdown tbody tr').nth(i).locator('td');
+    const best = Math.max(...Object.values(item.scores).filter(v => v != null));
+    for (let j = 0; j < 6; j++) {
+      const model = snapshot.models.find(m => m.name === visionHeaders[j + 1]);
+      assert.equal(await cells.nth(j).locator('.winner-badge').count(), item.scores[model.id] === best ? 1 : 0);
+    }
+  }
+  await page.locator('#vision-breakdown').screenshot({ path: '/tmp/simple-jev-vision-winners.png' });
   assert.equal(await page.locator('#vision-items > details').count(), 7);
   assert.equal(await page.locator('#vision-items .comparison-win, #vision-items .comparison-loss').count(), 0);
   await page.locator('#vision-items > details > summary').first().click();
   await page.locator('#vision-items img').first().scrollIntoViewIfNeeded();
   await page.waitForFunction(() => { const image = document.querySelector('#vision-items img'); return image.complete && image.naturalWidth > 0; });
   assert.equal(await page.locator('#vision-items > details').first().locator('tbody tr').count(), 6);
+  assert.equal(await page.locator('#vision-items > details').first().locator('thead th').count(), 2);
+  assert.equal(await page.locator('#vision-items > details').first().locator('.winner-badge').count(), 1);
+  const cifarImage = page.locator('#vision-items img').first();
+  assert.equal(await cifarImage.evaluate(e => e.naturalWidth), 32);
+  assert.equal(await cifarImage.evaluate(e => getComputedStyle(e).imageRendering), 'pixelated');
+  assert.match(await page.locator('#vision-items > details').first().innerText(), /image-000010/);
+  await page.locator('#vision-items > details').first().screenshot({ path: '/tmp/simple-jev-cifar-example.png' });
   await page.locator('#vision-items > details > summary').nth(2).click();
   assert.match(await page.locator('#vision-items > details').nth(2).innerText(), /Native MME \/ 2,000/);
 

@@ -1,5 +1,10 @@
 // Frozen data only: no model requests, credentials, storage, or executable dataset content.
 export const percent = (value) => `${(value * 100).toFixed(2)}%`;
+export function bestModelIds(scores) {
+  const measured = Object.entries(scores).filter(([, value]) => Number.isFinite(value));
+  const best = Math.max(...measured.map(([, value]) => value));
+  return measured.filter(([, value]) => Math.abs(value - best) < 1e-12).map(([id]) => id);
+}
 export function comparison(value, baseline, isBaseline = false) {
   if (isBaseline) return 'baseline';
   if (Math.abs(value - baseline) < 1e-12) return 'tie';
@@ -41,6 +46,21 @@ function node(tag, text, className) {
   if (text !== undefined && text !== null) element.textContent = String(text);
   if (className) element.className = className;
   return element;
+}
+function itemToggle() {
+  const hint = node('span', null, 'expand-mark item-toggle');
+  hint.append(node('span', 'View scores & example', 'when-closed'), node('span', 'Hide scores & example', 'when-open'));
+  const chevron = node('span', '⌄', 'disclosure-chevron'); chevron.setAttribute('aria-hidden', 'true'); hint.append(chevron);
+  return hint;
+}
+function visionScoreCell(modelId, scores, format = percent) {
+  const value = scores[modelId];
+  const winners = bestModelIds(scores);
+  const winner = winners.includes(modelId);
+  const cell = node('td', value == null ? '—' : format(value), value == null ? 'comparison-baseline' : winner ? 'vision-winner' : 'vision-score');
+  if (winner) cell.append(node('small', winners.length > 1 ? 'Joint winner' : 'Winner', 'winner-badge'));
+  if (value == null) cell.append(node('small', 'Not evaluated'));
+  return cell;
 }
 function pretty(value) { return typeof value === 'string' ? value : JSON.stringify(value, null, 2); }
 function pre(value) {
@@ -117,7 +137,10 @@ async function init() {
         const track = node('div', null, 'score-track'); track.setAttribute('aria-hidden', 'true');
         const fill = node('div', null, 'score-fill'); fill.style.width = `${model.visionScore * 100}%`; track.append(fill);
         visionCell.append(node('span', percent(model.visionScore), 'score-number'), track, node('small', 'Mean accuracy · 7 configs'));
-        if (model.visionScore === bestVision) visionCell.append(node('small', 'Highest measured vision score', 'vision-leader-label'));
+        if (model.visionScore === bestVision) {
+          visionCell.classList.add('vision-winner');
+          visionCell.append(node('small', 'Winner · vision mean', 'winner-badge'));
+        }
       }
       row.append(visionCell); body.append(row);
     }
@@ -160,7 +183,7 @@ async function init() {
     $('decision-items').replaceChildren();
     for (const item of items) {
       const details = node('details', null, 'item-detail'); const summary = node('summary', `${item.project} · ${item.configuration}`);
-      summary.append(node('small', `${item.category} · ${item.questions.toLocaleString()} scored questions · ${item.rows.toLocaleString()} input rows · weight 1/26`)); details.append(summary);
+      summary.append(node('small', `${item.category} · ${item.questions.toLocaleString()} scored questions · ${item.rows.toLocaleString()} input rows · weight 1/26`), itemToggle()); details.append(summary);
       const body = node('div', null, 'item-body');
       body.append(node('p', item.description), node('p', item.scoring));
       if (item.scopeNote) body.append(node('p', item.scopeNote));
@@ -182,37 +205,37 @@ async function init() {
   $('decision-search').addEventListener('input', renderDecisionItems);
   $('decision-category').addEventListener('change', renderDecisionItems);
 
-  const visionTable = $('vision-breakdown'); visionTable.className = 'breakdown-table';
-  const visionBody = tableHeader(visionTable, ['Benchmark / questions', ...models.map(m => m.name)]);
+  const visionModels = rankModels(models, 'visionScore'); // Unmeasured Jev is last, never treated as zero.
+  const visionTable = $('vision-breakdown'); visionTable.className = 'breakdown-table vision-matrix';
+  const visionBody = tableHeader(visionTable, ['Benchmark / questions', ...visionModels.map(m => m.name)]);
   for (const item of data.visionItems) {
     const row = node('tr'); const label = rowHeader(`${item.project} · ${item.configuration}`);
     label.append(node('small', `${item.rows.toLocaleString()} questions`)); row.append(label);
-    for (const model of models) {
-      row.append(node('td', item.scores[model.id] == null ? '—' : percent(item.scores[model.id]), model.id === 'jev' ? 'comparison-baseline' : 'vision-score'));
-    }
+    for (const model of visionModels) row.append(visionScoreCell(model.id, item.scores));
     visionBody.append(row);
     const details = node('details', null, 'item-detail');
     const summary = node('summary', `${item.project} · ${item.configuration}`);
-    summary.append(node('small', `${item.rows.toLocaleString()} questions · weight 1/7`)); details.append(summary);
+    summary.append(node('small', `${item.rows.toLocaleString()} questions · weight 1/7`), itemToggle()); details.append(summary);
     const body = node('div', null, 'item-body'); body.append(node('p', item.description));
     const table = node('table');
     const metricLabel = item.nativeMetric === 'mme_score' ? 'Native MME / 2,000' : item.nativeMetric === 'f1' ? 'Native F1' : 'Native accuracy';
-    const scores = tableHeader(table, ['Model', 'Question accuracy', metricLabel]);
+    const hasDistinctMetric = item.nativeMetric !== 'accuracy';
+    const scores = tableHeader(table, ['Model', 'Question accuracy', ...(hasDistinctMetric ? [metricLabel] : [])]);
     for (const model of [...models].sort((a,b) => (item.scores[b.id] ?? -Infinity) - (item.scores[a.id] ?? -Infinity))) {
       const scoreRow = node('tr', null, model.id === 'jev' ? 'reference-row' : '');
-      const native = item.nativeScores[model.id];
-      scoreRow.append(rowHeader(model.name), node('td', item.scores[model.id] == null ? '— · not evaluated' : percent(item.scores[model.id])),
-        node('td', native == null ? '—' : item.nativeMetric === 'mme_score' ? native.toFixed(2) : percent(native)));
+      scoreRow.append(rowHeader(model.name), visionScoreCell(model.id, item.scores));
+      if (hasDistinctMetric) scoreRow.append(visionScoreCell(model.id, item.nativeScores,
+        item.nativeMetric === 'mme_score' ? value => `${value.toFixed(2)} / 2,000` : percent));
       scores.append(scoreRow);
     }
     body.append(scrollTable(table, `${item.project} vision scores`), node('h4', 'An actual image question'));
     const figure = node('figure', null, 'vision-example');
-    const image = node('img'); image.src = item.example.image; image.alt = `Evaluation image for ${item.project}, case ${item.example.id}`; image.loading = 'lazy';
-    const caption = node('figcaption', `Case ${item.example.id}. Source: ${item.project}. Original evaluated PNG, no additional preprocessing. `);
+    const image = node('img', null, item.id === 'vision-cifar10' ? 'cifar-preview' : ''); image.src = item.example.image; image.alt = `Evaluation image for ${item.project}, case ${item.example.id}`; image.loading = 'lazy';
+    const caption = node('figcaption', `Case ${item.example.id}. Source: ${item.project}. Original evaluated PNG, no additional preprocessing. ${item.id === 'vision-cifar10' ? 'Original resolution: 32 × 32 pixels; enlarged with crisp pixels, not generated detail. ' : ''}`);
     const sourceURL = item.source.url || (item.source.repository ? `https://huggingface.co/datasets/${item.source.repository}` : null);
     if (sourceURL?.startsWith('https://')) { const link = node('a', 'Dataset source and terms ↗'); link.href = sourceURL; caption.append(link); }
     figure.append(image, caption); body.append(figure, questionBlock(item.example.question, item.example.gold));
-    body.append(node('p', 'This is the first source case, not selected for model performance. The answer shown is dataset gold, not a model output.'));
+    body.append(node('p', `${item.example.selection} The answer shown is dataset gold, not a model output.`));
     const provenance = node('details'); provenance.append(node('summary', 'Source, image hash and answer options'),
       pre({ source: item.source, imageSha256: item.example.imageSha256, options: item.example.options }));
     body.append(provenance); details.append(body); $('vision-items').append(details);

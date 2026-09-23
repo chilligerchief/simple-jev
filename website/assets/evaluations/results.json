@@ -106,9 +106,10 @@
         "question": "Which category best describes the main subject in this image?"
       },
       "example": {
-        "id": "image-000000",
+        "id": "image-000010",
         "question": "Which category best describes the main subject in this image?",
-        "gold": "cat",
+        "gold": "airplane",
+        "selection": "Selected for visual clarity, not model performance.",
         "options": [
           {
             "id": "class_0",
@@ -151,8 +152,8 @@
             "description": "truck"
           }
         ],
-        "imageSha256": "0d4964922e2463ad0e2b1cd298e03d5627ff7dad1ab1cdd173ce35e9974e204f",
-        "image": "assets/evaluations/images/0d4964922e2463ad0e2b1cd298e03d5627ff7dad1ab1cdd173ce35e9974e204f.png"
+        "imageSha256": "c50e97f0b6841005b23a108d01b6fe18ab1e59a0c84c9ed0d989fa854b0c9a87",
+        "image": "assets/evaluations/images/c50e97f0b6841005b23a108d01b6fe18ab1e59a0c84c9ed0d989fa854b0c9a87.png"
       }
     },
     {
@@ -234,6 +235,7 @@
         "id": "image-000000",
         "question": "Which breed of cat or dog is shown in this image?",
         "gold": "newfoundland",
+        "selection": "First source case, not selected for model performance.",
         "options": [
           {
             "id": "class_0",
@@ -422,6 +424,7 @@
         "id": "existence-000000006040-0",
         "question": "Is there a train in this image? Please answer yes or no.",
         "gold": "yes",
+        "selection": "First source case, not selected for model performance.",
         "options": null,
         "imageSha256": "968852b296257bd93f10296c3efb37c868e257a0f911c01e31abb2af8292d759",
         "image": "assets/evaluations/images/968852b296257bd93f10296c3efb37c868e257a0f911c01e31abb2af8292d759.png"
@@ -460,6 +463,7 @@
         "id": "1",
         "question": "Is there a snowboard in the image?",
         "gold": "yes",
+        "selection": "First source case, not selected for model performance.",
         "options": null,
         "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
         "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
@@ -498,6 +502,7 @@
         "id": "1",
         "question": "Is there a snowboard in the image?",
         "gold": "yes",
+        "selection": "First source case, not selected for model performance.",
         "options": null,
         "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
         "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
@@ -536,6 +541,7 @@
         "id": "1",
         "question": "Is there a snowboard in the image?",
         "gold": "yes",
+        "selection": "First source case, not selected for model performance.",
         "options": null,
         "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
         "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
@@ -593,6 +599,7 @@
         "id": "30092456",
         "question": "How many people are there?",
         "gold": 2,
+        "selection": "First source case, not selected for model performance.",
         "options": null,
         "imageSha256": "ebf975f06ab3aaef2079af07cf130ba75514ed71b8c46902d2a7e711e9109732",
         "image": "assets/evaluations/images/ebf975f06ab3aaef2079af07cf130ba75514ed71b8c46902d2a7e711e9109732.png"
@@ -2479,7 +2486,7 @@
     "simple-jev-prompt-lab/eval/suites/english/vision-cifar10.json": "2a688f62107fb2d4411935648fbc9c2a038018cf1e05a96b8d5b84158d686bd8",
     "simple-jev-eval/eval/suites/english/vision-cifar10.json": "2a688f62107fb2d4411935648fbc9c2a038018cf1e05a96b8d5b84158d686bd8",
     "simple-jev-prompt-lab/eval/data/vision-cifar10/rows.jsonl": "ff08d92c6980bbccde02da3f6d480e8e9509b35141b993d4a5d4bcaeebe9484f",
-    "simple-jev-prompt-lab/eval/data/vision-cifar10/images/0d4964922e2463ad0e2b1cd298e03d5627ff7dad1ab1cdd173ce35e9974e204f.png": "0d4964922e2463ad0e2b1cd298e03d5627ff7dad1ab1cdd173ce35e9974e204f",
+    "simple-jev-prompt-lab/eval/data/vision-cifar10/images/c50e97f0b6841005b23a108d01b6fe18ab1e59a0c84c9ed0d989fa854b0c9a87.png": "c50e97f0b6841005b23a108d01b6fe18ab1e59a0c84c9ed0d989fa854b0c9a87",
     "simple-jev-prompt-lab/eval/suites/english/vision-oxford-pets.json": "51c16cd856bb0ed621a30979eb99310ed2f17e3bdd150aafdf938b78f1591c14",
     "simple-jev-eval/eval/suites/english/vision-oxford-pets.json": "51c16cd856bb0ed621a30979eb99310ed2f17e3bdd150aafdf938b78f1591c14",
     "simple-jev-prompt-lab/eval/data/vision-oxford-pets/rows.jsonl": "dbdef26f624cb83d5b97e47f521384321fd1dfaff20144f1c91a9421a74a9e86",

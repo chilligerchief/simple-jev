@@ -52,7 +52,7 @@
     </section>
 
     <details id="public-set" class="eval-section">
-      <summary><span><span class="eyebrow">01 / JEVBENCH</span><span class="section-title">The original public question set</span><span class="section-subtitle">231 released decisions · difficulty, family and question-type breakdowns</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <summary><span><span class="eyebrow">01 / JEVBENCH</span><span class="section-title">The original public question set</span><span class="section-subtitle">231 released decisions · difficulty, family and question-type breakdowns</span><span class="section-action when-closed">Click to expand: see the original JevBench dataset questions</span></span><span class="expand-mark"><span class="when-closed">View breakdown</span><span class="when-open">Hide breakdown</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></span></summary>
       <div class="section-body">
         <p>48 easy, 72 “original” (standard-tier), and 111 hard decisions. “Original” is also the name of the 72-question tier: it is not the whole public set. The published 534-decision benchmark includes unavailable held-out/imported items; this page does not reproduce that leaderboard or its weighted composite.</p>
         <p class="eval-notes"><strong>Replication note.</strong> Our Jev endpoint rerun scored <strong>199/231 (86.15%)</strong>; we could not replicate the published <strong>200/231 (86.58%)</strong> in that run. The comparison table and public-set breakdowns retain the published 200/231 baseline.</p>
@@ -76,7 +76,7 @@
     </details>
 
     <details id="decision-set" class="eval-section">
-      <summary><span><span class="eyebrow">02 / DECISION BENCHMARKS</span><span class="section-title">Beyond a single question set</span><span class="section-subtitle">33,099 scored questions · 21,364 examples · 26 matched English items</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <summary><span><span class="eyebrow">02 / DECISION BENCHMARKS</span><span class="section-title">Beyond a single question set</span><span class="section-subtitle">33,099 scored questions · 21,364 examples · 26 matched English items</span><span class="section-action when-closed">Click to expand: see the expanded question set across domains</span></span><span class="expand-mark"><span class="when-closed">View breakdown</span><span class="when-open">Hide breakdown</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></span></summary>
       <div class="section-body">
         <p>All six models have matched coverage: 33,099 scored questions across 21,364 input examples, grouped into 26 items across six domains. Each item contributes 1/26 of the headline score, regardless of its row count. Knowledge, ranking, vision, and non-English results are excluded. Some items contain several suites or multiple binary decisions per input row.</p>
         <h3>Domain breakdown</h3>
@@ -92,19 +92,20 @@
     </details>
 
     <details id="vision-set" class="eval-section">
-      <summary><span><span class="eyebrow">03 / VISION BENCHMARKS</span><span class="section-title">Decisions grounded in images</span><span class="section-subtitle">63,372 questions per model · seven configurations · recognition, perception, hallucination and counting</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <summary><span><span class="eyebrow">03 / VISION BENCHMARKS</span><span class="section-title">Decisions grounded in images</span><span class="section-subtitle">63,372 questions per model · seven configurations · recognition, perception, hallucination and counting</span><span class="section-action when-closed">Click to expand: see the various questions with images</span></span><span class="expand-mark"><span class="when-closed">View breakdown</span><span class="when-open">Hide breakdown</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></span></summary>
       <div class="section-body">
         <p>Five image-capable models completed the same seven configurations with no failed rows. Jev has no measured vision result here: “—” means unavailable, not zero, and no model is labelled as beating Jev on vision.</p>
         <h3>Accuracy breakdown</h3>
         <p>The headline is a page-specific summary: the arithmetic mean of seven per-question accuracies, not pooled accuracy or an official combined leaderboard score. The three POPE variants each receive one-seventh weight. MME’s native score (out of 2,000) and POPE’s native F1 are preserved inside the item details.</p>
+        <p class="vision-key"><strong>Winner</strong> marks the highest measured accuracy in each row; equal best scores share the badge. Jev is shown at the far right as not evaluated. Inside each breakdown, native metrics have their own winners.</p>
         <div class="eval-scroll" tabindex="0" role="region" aria-label="Vision accuracy breakdown"><table id="vision-breakdown"></table></div>
-        <p>The selected text prompt formats were transferred to vision without a separate vision prompt search. These measurements used the image-capable evaluation implementation; they do not imply that the state-only serving policy flag accepts images.</p>
+        <p>The selected text prompt formats were transferred to vision without a separate vision prompt search. These measurements used the image-capable evaluation implementation. Image-builder now supports native messages and images with named prompt policies; image availability depends on the deployed build and model.</p>
         <div id="vision-items"></div>
       </div>
     </details>
 
     <details id="methodology" class="eval-section">
-      <summary><span><span class="eyebrow">04 / READ THE FINE PRINT</span><span class="section-title">Methodology &amp; sources</span><span class="section-subtitle">What these numbers mean—and what they do not</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <summary><span><span class="eyebrow">04 / READ THE FINE PRINT</span><span class="section-title">Methodology &amp; sources</span><span class="section-subtitle">What these numbers mean—and what they do not</span></span><span class="expand-mark"><span class="when-closed">View methodology</span><span class="when-open">Hide methodology</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></span></summary>
       <div class="section-body methodology">
         <h3>Scoring</h3>
         <p>Public JevBench uses pinned upstream scoring: Choice and Score select the highest-probability label, with lexicographic tie-breaking. Score does not round the expected numeric score. Noul maps to P(yes) and 1−P(yes). Invalid answers and request failures count as wrong. No tier, cost, speed or calibration weighting is applied.</p>

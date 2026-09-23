@@ -2,13 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { comparison, percent, rankModels, categoryScores, filterExamples, filterItems } from '../evaluations.mjs';
+import { bestModelIds, comparison, percent, rankModels, categoryScores, filterExamples, filterItems } from '../evaluations.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const data = JSON.parse(read('../assets/evaluations/results.json'));
 const examples = JSON.parse(read('../assets/evaluations/public-examples.json'));
 const models = data.models;
 const ids = models.map(m => m.id).sort();
+
+test('vision winners exclude unavailable results and preserve ties', () => {
+  assert.deepEqual(bestModelIds({ a: 0.9, b: 0.7, jev: null }), ['a']);
+  assert.deepEqual(bestModelIds({ a: 0.9, b: 0.9, jev: null }), ['a', 'b']);
+  assert.deepEqual(bestModelIds({ a: 0, jev: null }), ['a']);
+  assert.deepEqual(bestModelIds({ jev: null }), []);
+});
 
 test('comparison highlights strict winners, not the baseline or ties', () => {
   assert.equal(comparison(214 / 231, 200 / 231), 'win');
@@ -108,6 +115,10 @@ test('vision is seven matched accuracy configurations with no invented Jev score
       assert.ok(item.scores[model.id] >= 0 && item.scores[model.id] <= 1);
     }
   }
+  const cifar = data.visionItems.find(item => item.project === 'CIFAR-10');
+  assert.equal(cifar.example.id, 'image-000010');
+  assert.equal(cifar.example.gold, 'airplane');
+  assert.match(cifar.example.selection, /visual clarity/);
   const mme = data.visionItems.find(item => item.project === 'MME');
   assert.equal(mme.nativeMetric, 'mme_score');
   assert.ok(mme.nativeScores.qwen27b > 1000);
