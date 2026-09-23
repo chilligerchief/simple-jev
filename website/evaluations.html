@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#f8f9f6" />
-  <meta name="description" content="Compare Jev, Qwen and Gemma on 231 public JevBench questions and 26 decision benchmark items. Explore score breakdowns, real questions and recorded answers." />
+  <meta name="description" content="Compare Jev, Qwen and Gemma on public JevBench, decision benchmarks and 63,372 vision questions. Explore score breakdowns, real questions and recorded answers." />
   <title>Evaluations — Simple Jev</title>
   <link rel="icon" type="image/png" href="assets/simple-jev.png" />
   <link rel="stylesheet" href="styles.css?v=20260918-how-button" />
@@ -37,22 +37,25 @@
             <th scope="col">Rank</th><th scope="col">Model</th><th scope="col">Preferred prompt format</th>
             <th scope="col" id="public-heading" aria-sort="descending"><button type="button" data-sort="publicCorrect">JevBench public set ↓<small>231 decisions · prompt-selection run¹</small></button></th>
             <th scope="col" id="decision-heading" aria-sort="none"><button type="button" data-sort="decisionScore">Decision benchmarks<small>33,099 questions · 26-item mean²</small></button></th>
+            <th scope="col" id="vision-heading" aria-sort="none"><button type="button" data-sort="visionScore">Vision benchmarks<small>63,372 questions · 7-config mean³</small></button></th>
           </tr></thead>
           <tbody id="leaderboard"></tbody>
         </table>
       </div>
-      <p class="comparison-legend">Green highlights scores above Jev. Grey marks the baseline; wins, losses and ties are labelled per benchmark. “pp” means percentage points—not statistical significance.</p>
+      <p class="comparison-legend">Green highlights scores above Jev. Grey marks the baseline; wins, losses and ties are labelled per benchmark. Blue marks vision results, which have no Jev baseline. “pp” means percentage points—not statistical significance.</p>
       <div class="eval-notes">
         <p><strong>¹ JevBench public set.</strong> Jev’s baseline is <strong>200/231 (86.58%)</strong>. All 231 decisions count equally. Qwen/Gemma scores use their preferred prompt formats, selected on this development set—<strong>not held-out accuracy</strong>.</p>
         <p><strong>² Decision benchmarks.</strong> Accuracy is the equal-weight mean of 26 English project/configuration/category items, not pooled accuracy or an average of category averages. Jev’s baseline is <strong>87.15%</strong>. Each column is a separate evaluation.</p>
+        <p><strong>³ Vision benchmarks.</strong> Equal-weight mean of per-question accuracy across seven configurations. Native MME points and POPE F1 are shown separately below, not mixed into this average. Jev has no measured vision result in this evaluation.</p>
       </div>
-      <p class="eval-jumps"><a href="#public-set">Explore public questions ↓</a><a href="#decision-set">Explore decision benchmarks ↓</a><a href="#methodology">Methodology &amp; sources ↓</a></p>
+      <p class="eval-jumps"><a href="#public-set">Explore public questions ↓</a><a href="#decision-set">Explore decision benchmarks ↓</a><a href="#vision-set">Explore vision benchmarks ↓</a><a href="#methodology">Methodology &amp; sources ↓</a></p>
     </section>
 
     <details id="public-set" class="eval-section">
       <summary><span><span class="eyebrow">01 / JEVBENCH</span><span class="section-title">The original public question set</span><span class="section-subtitle">231 released decisions · difficulty, family and question-type breakdowns</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
       <div class="section-body">
         <p>48 easy, 72 “original” (standard-tier), and 111 hard decisions. “Original” is also the name of the 72-question tier: it is not the whole public set. The published 534-decision benchmark includes unavailable held-out/imported items; this page does not reproduce that leaderboard or its weighted composite.</p>
+        <p class="eval-notes"><strong>Replication note.</strong> Our Jev endpoint rerun scored <strong>199/231 (86.15%)</strong>; we could not replicate the published <strong>200/231 (86.58%)</strong> in that run. The comparison table and public-set breakdowns retain the published 200/231 baseline.</p>
         <label class="eval-control">Break down by <select id="public-dimension"><option value="tier">Difficulty tier</option><option value="family">Task family</option><option value="primitive">Question type</option></select></label>
         <div class="eval-scroll" tabindex="0" role="region" aria-label="Public-set breakdown"><table id="public-breakdown"></table></div>
         <h3>Questions &amp; recorded answers</h3>
@@ -88,8 +91,20 @@
       </div>
     </details>
 
+    <details id="vision-set" class="eval-section">
+      <summary><span><span class="eyebrow">03 / VISION BENCHMARKS</span><span class="section-title">Decisions grounded in images</span><span class="section-subtitle">63,372 questions per model · seven configurations · recognition, perception, hallucination and counting</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <div class="section-body">
+        <p>Five image-capable models completed the same seven configurations with no failed rows. Jev has no measured vision result here: “—” means unavailable, not zero, and no model is labelled as beating Jev on vision.</p>
+        <h3>Accuracy breakdown</h3>
+        <p>The headline is a page-specific summary: the arithmetic mean of seven per-question accuracies, not pooled accuracy or an official combined leaderboard score. The three POPE variants each receive one-seventh weight. MME’s native score (out of 2,000) and POPE’s native F1 are preserved inside the item details.</p>
+        <div class="eval-scroll" tabindex="0" role="region" aria-label="Vision accuracy breakdown"><table id="vision-breakdown"></table></div>
+        <p>The selected text prompt formats were transferred to vision without a separate vision prompt search. These measurements used the image-capable evaluation implementation; they do not imply that the state-only serving policy flag accepts images.</p>
+        <div id="vision-items"></div>
+      </div>
+    </details>
+
     <details id="methodology" class="eval-section">
-      <summary><span><span class="eyebrow">03 / READ THE FINE PRINT</span><span class="section-title">Methodology &amp; sources</span><span class="section-subtitle">What these numbers mean—and what they do not</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
+      <summary><span><span class="eyebrow">04 / READ THE FINE PRINT</span><span class="section-title">Methodology &amp; sources</span><span class="section-subtitle">What these numbers mean—and what they do not</span></span><span class="expand-mark" aria-hidden="true">+</span></summary>
       <div class="section-body methodology">
         <h3>Scoring</h3>
         <p>Public JevBench uses pinned upstream scoring: Choice and Score select the highest-probability label, with lexicographic tie-breaking. Score does not round the expected numeric score. Noul maps to P(yes) and 1−P(yes). Invalid answers and request failures count as wrong. No tier, cost, speed or calibration weighting is applied.</p>

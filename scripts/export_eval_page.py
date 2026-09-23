@@ -148,22 +148,77 @@ def main():
     assert len(decision_items) == 26
     for model in models:
         assert abs(sum(r['scores'][model['id']] for r in decision_items)/26-model['decisionScore']) < 1e-12
+    # Use accuracy throughout the new vision headline, never average F1/MME points
+    # with accuracy. Retain native benchmark metrics alongside it in drill-downs.
+    vision_definitions = [
+        ('vision-cifar10', 'CIFAR-10', 'test', 'Recognize the main object among ten classes.'),
+        ('vision-oxford-pets', 'Oxford-IIIT Pets', 'test', 'Identify one of 37 cat or dog breeds, not just cat versus dog.'),
+        ('vision-mme-perception', 'MME', 'perception', 'Yes/no visual perception across ten categories. The native MME score sums accuracy and paired-question accuracy across categories (maximum 2,000).'),
+        ('vision-pope-adversarial', 'POPE', 'adversarial', 'Detect whether an object is present, with challenging absent-object distractors. Native headline metric: F1.'),
+        ('vision-pope-popular', 'POPE', 'popular', 'Detect object presence using popular-object distractors. Native headline metric: F1.'),
+        ('vision-pope-random', 'POPE', 'random', 'Detect object presence using randomly selected distractors. Native headline metric: F1.'),
+        ('vision-tallyqa', 'TallyQA', 'test', 'Count objects in images, including simple and complex counting questions.'),
+    ]
+    vision_reports = {key: load(lab / 'experiments/full_eval/results_merged' / key / 'image/report.json')
+                      for key, *_ in MODELS if key != 'jev'}
+    vision_items = []
+    images = {}
+    for suite_id, project, configuration, description in vision_definitions:
+        manifest_path = lab / 'eval/suites/english' / (suite_id + '.json')
+        manifest = load(manifest_path)
+        assert manifest == load(ev / 'suites/english' / (suite_id + '.json')), suite_id
+        dataset = ((root / manifest_path).parent / manifest['dataset']).resolve()
+        rows = lines(dataset.relative_to(root))
+        row = rows[0]  # Deterministic source example, never selected by model outcome.
+        image_path = (dataset.parent / row['image_path']).resolve()
+        image = read(image_path.relative_to(root))
+        assert hashlib.sha256(image).hexdigest() == row['image_sha256']
+        image_name = row['image_sha256'] + '.png'
+        images[image_name] = image
+        gold = row['options'][row['label']]['description'] if 'options' in row else row['answer']
+        scores, native_scores = {'jev': None}, {'jev': None}
+        for key, report in vision_reports.items():
+            found = [r for r in report['by_project'] if (r['project'], r['configuration']) == (project, configuration)]
+            assert len(found) == 1
+            item = found[0]
+            assert item['coverage'] == 'complete' and not item['missing_suites']
+            assert item['metrics']['rows'] == len(rows) and item['metrics']['failed_rows'] == 0
+            assert item['score'] == final['vision'][key][project + '/' + configuration]
+            scores[key] = item['metrics']['accuracy']
+            native_scores[key] = item['score']
+        vision_items.append({
+            'id': suite_id, 'project': project, 'configuration': configuration,
+            'description': description, 'rows': len(rows), 'scores': scores,
+            'nativeMetric': manifest['headline_metric'], 'nativeScores': native_scores,
+            'source': manifest['source'],
+            'example': {'id': row['id'], 'question': row['question'], 'gold': gold,
+                        'options': row.get('options'), 'imageSha256': row['image_sha256'],
+                        'image': 'assets/evaluations/images/' + image_name},
+        })
+    assert sum(item['rows'] for item in vision_items) == 63372
+    for model in models:
+        model['visionScore'] = None if model['id'] == 'jev' else sum(item['scores'][model['id']] for item in vision_items) / 7
+
     decision_rows = sum(item['rows'] for item in decision_items)
     decision_questions = sum(item['questions'] for item in decision_items)
     assert (decision_rows, decision_questions) == (21364, 33099)
     data = {
         'schemaVersion': 1, 'models': models, 'publicRows': 231,
         'decisionRows': decision_rows, 'decisionQuestions': decision_questions,
+        'visionRows': 63372, 'visionItems': vision_items,
         'publishedReference': {k: published[k] for k in ['model', 'source', 'source_sha256', 'rows', 'correct', 'accuracy']},
         'publicRevision': '83831807458d7df424a1e53e5724f3a3ffe2cf89',
         'publicBreakdowns': breakdowns, 'decisionItems': decision_items,
         'sources': sources,
     }
     out.mkdir(parents=True, exist_ok=True)
+    (out / 'images').mkdir(exist_ok=True)
+    for name, image in images.items():
+        (out / 'images' / name).write_bytes(image)
     (out / 'results.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
     (out / 'public-examples.json').write_text(json.dumps(examples, ensure_ascii=False, separators=(',', ':')) + '\n')
     (out / 'LICENSE-jevbench.txt').write_bytes((root / ev / 'vendor/jevbench/LICENSE').read_bytes())
-    print(f'Exported 6 models, 26 decision items, 231 public examples to {out}')
+    print(f'Exported 6 models, 26 decision items, 7 vision configurations, 231 public examples to {out}')
 
 
 if __name__ == '__main__':

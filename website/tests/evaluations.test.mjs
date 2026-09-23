@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { comparison, percent, rankModels, categoryScores, filterExamples, filterItems } from '../evaluations.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -86,6 +87,37 @@ test('decision headline is the mean of 26 matched items, not pooled rows', () =>
   }
 });
 
+test('vision is seven matched accuracy configurations with no invented Jev score', () => {
+  assert.equal(data.visionItems.length, 7);
+  assert.equal(data.visionRows, 63372);
+  assert.equal(data.visionItems.reduce((sum, item) => sum + item.rows, 0), 63372);
+  assert.deepEqual(models.map(m => m.visionScore == null ? null : percent(m.visionScore)), ['86.52%', '86.14%', '88.29%', null, '83.00%', '85.62%']);
+  for (const model of models) {
+    if (model.id === 'jev') { assert.equal(model.visionScore, null); continue; }
+    const mean = data.visionItems.reduce((sum, item) => sum + item.scores[model.id], 0) / 7;
+    assert.ok(Math.abs(mean - model.visionScore) < 1e-12);
+  }
+  for (const item of data.visionItems) {
+    assert.equal(item.scores.jev, null);
+    assert.equal(item.nativeScores.jev, null);
+    assert.deepEqual(Object.keys(item.scores).sort(), ids);
+    const bytes = readFileSync(new URL(`../${item.example.image}`, import.meta.url));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), item.example.imageSha256);
+    assert.ok(item.example.question && item.example.gold != null);
+    for (const model of models.filter(m => m.id !== 'jev')) {
+      assert.ok(item.scores[model.id] >= 0 && item.scores[model.id] <= 1);
+    }
+  }
+  const mme = data.visionItems.find(item => item.project === 'MME');
+  assert.equal(mme.nativeMetric, 'mme_score');
+  assert.ok(mme.nativeScores.qwen27b > 1000);
+  assert.notEqual(mme.scores.qwen27b, mme.nativeScores.qwen27b / 2000);
+  const ranked = rankModels(models, 'visionScore');
+  assert.equal(ranked[0].id, 'qwen-moe');
+  assert.equal(ranked.at(-1).id, 'jev');
+  assert.equal(ranked.at(-1).rank, null);
+});
+
 test('rankings are deterministic, handle ties, and do not mutate input', () => {
   assert.deepEqual(rankModels(models, 'decisionScore').map(m => m.rank), [1, 2, 3, 4, 5, 6]);
   const tied = [{ publicCorrect: 2 }, { publicCorrect: 3 }, { publicCorrect: 3 }];
@@ -120,10 +152,13 @@ test('source manifest includes the canonical evaluator and selected predictions'
 
 test('page has accessible disclosures, prompt column, caveats, sources and no unsafe HTML sink', () => {
   const html = read('../evaluations.html');
-  for (const id of ['public-set', 'decision-set', 'methodology']) assert.ok(html.includes(`<details id="${id}"`));
+  for (const id of ['public-set', 'decision-set', 'vision-set', 'methodology']) assert.ok(html.includes(`<details id="${id}"`));
   assert.match(html, /Preferred prompt format/);
   assert.match(html, /not held-out accuracy/);
-  assert.doesNotMatch(html, /199\/231/);
+  assert.doesNotMatch(html.split('<details id="public-set"')[0], /199\/231/);
+  const publicSection = html.split('<details id="public-set"')[1].split('<details id="decision-set"')[0];
+  assert.match(publicSection, /199\/231 \(86\.15%\)/);
+  assert.match(publicSection, /we could not replicate the published/);
   assert.match(html, /Jev’s baseline is <strong>200\/231 \(86\.58%\)/);
   assert.match(html, /534-decision/);
   assert.match(html, /≥0.5/);

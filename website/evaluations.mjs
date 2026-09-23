@@ -14,9 +14,9 @@ function markComparison(cell, value, baseline, isBaseline, showDelta = true) {
   cell.append(node('small', labels[result] + suffix, 'comparison-label'));
 }
 export function rankModels(models, key) {
-  if (!['publicCorrect', 'decisionScore'].includes(key)) throw new Error('Unknown ranking');
-  const sorted = [...models].sort((a, b) => b[key] - a[key]);
-  return sorted.map((model, i) => ({ ...model, rank: sorted.findIndex(m => m[key] === model[key]) + 1 }));
+  if (!['publicCorrect', 'decisionScore', 'visionScore'].includes(key)) throw new Error('Unknown ranking');
+  const sorted = [...models].sort((a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity));
+  return sorted.map(model => ({ ...model, rank: model[key] == null ? null : sorted.findIndex(m => m[key] === model[key]) + 1 }));
 }
 export function categoryScores(items, models) {
   return [...new Set(items.map(item => item.category))].sort().map(name => {
@@ -94,11 +94,13 @@ async function init() {
   function leaderboard(key) {
     const body = $('leaderboard'); body.replaceChildren();
     const baseline = models.find(model => model.id === 'jev');
+    const bestVision = Math.max(...models.map(model => model.visionScore ?? -Infinity));
     for (const model of rankModels(models, key)) {
-      const row = node('tr', null, model.id === 'jev' ? 'reference-row' : model[key] > baseline[key] ? 'winner-row' : '');
+      const row = node('tr', null, model.id === 'jev' ? 'reference-row' : key === 'visionScore'
+        ? (model.visionScore === bestVision ? 'vision-leader-row' : '') : model[key] > baseline[key] ? 'winner-row' : '');
       const name = rowHeader(model.name);
       const policy = node('td'); policy.append(node('code', model.policy));
-      row.append(node('td', model.rank), name, policy);
+      row.append(node('td', model.rank ?? '—'), name, policy);
       for (const [value, reference, display, note] of [[model.publicCorrect / 231, baseline.publicCorrect / 231, `${model.publicCorrect} — ${percent(model.publicCorrect / 231)}`, 'of 231 decisions'],
         [model.decisionScore, baseline.decisionScore, percent(model.decisionScore), 'Mean of 26 items']]) {
         const winning = model.id !== 'jev' && value > reference;
@@ -108,12 +110,21 @@ async function init() {
         markComparison(cell, value, reference, model.id === 'jev');
         row.append(cell);
       }
-      body.append(row);
+      const visionCell = node('td', null, model.visionScore == null ? '' : 'vision-score');
+      if (model.visionScore == null) {
+        visionCell.append(node('span', '—', 'score-number'), node('small', 'Not evaluated'));
+      } else {
+        const track = node('div', null, 'score-track'); track.setAttribute('aria-hidden', 'true');
+        const fill = node('div', null, 'score-fill'); fill.style.width = `${model.visionScore * 100}%`; track.append(fill);
+        visionCell.append(node('span', percent(model.visionScore), 'score-number'), track, node('small', 'Mean accuracy · 7 configs'));
+        if (model.visionScore === bestVision) visionCell.append(node('small', 'Highest measured vision score', 'vision-leader-label'));
+      }
+      row.append(visionCell); body.append(row);
     }
     for (const button of document.querySelectorAll('[data-sort]')) {
       const selected = button.dataset.sort === key;
       button.parentElement.setAttribute('aria-sort', selected ? 'descending' : 'none');
-      button.firstChild.textContent = (button.dataset.sort === 'publicCorrect' ? 'JevBench public set' : 'Decision benchmarks') + (selected ? ' ↓' : '');
+      button.firstChild.textContent = ({ publicCorrect: 'JevBench public set', decisionScore: 'Decision benchmarks', visionScore: 'Vision benchmarks' }[button.dataset.sort]) + (selected ? ' ↓' : '');
     }
   }
   leaderboard('publicCorrect');
@@ -171,6 +182,42 @@ async function init() {
   $('decision-search').addEventListener('input', renderDecisionItems);
   $('decision-category').addEventListener('change', renderDecisionItems);
 
+  const visionTable = $('vision-breakdown'); visionTable.className = 'breakdown-table';
+  const visionBody = tableHeader(visionTable, ['Benchmark / questions', ...models.map(m => m.name)]);
+  for (const item of data.visionItems) {
+    const row = node('tr'); const label = rowHeader(`${item.project} · ${item.configuration}`);
+    label.append(node('small', `${item.rows.toLocaleString()} questions`)); row.append(label);
+    for (const model of models) {
+      row.append(node('td', item.scores[model.id] == null ? '—' : percent(item.scores[model.id]), model.id === 'jev' ? 'comparison-baseline' : 'vision-score'));
+    }
+    visionBody.append(row);
+    const details = node('details', null, 'item-detail');
+    const summary = node('summary', `${item.project} · ${item.configuration}`);
+    summary.append(node('small', `${item.rows.toLocaleString()} questions · weight 1/7`)); details.append(summary);
+    const body = node('div', null, 'item-body'); body.append(node('p', item.description));
+    const table = node('table');
+    const metricLabel = item.nativeMetric === 'mme_score' ? 'Native MME / 2,000' : item.nativeMetric === 'f1' ? 'Native F1' : 'Native accuracy';
+    const scores = tableHeader(table, ['Model', 'Question accuracy', metricLabel]);
+    for (const model of [...models].sort((a,b) => (item.scores[b.id] ?? -Infinity) - (item.scores[a.id] ?? -Infinity))) {
+      const scoreRow = node('tr', null, model.id === 'jev' ? 'reference-row' : '');
+      const native = item.nativeScores[model.id];
+      scoreRow.append(rowHeader(model.name), node('td', item.scores[model.id] == null ? '— · not evaluated' : percent(item.scores[model.id])),
+        node('td', native == null ? '—' : item.nativeMetric === 'mme_score' ? native.toFixed(2) : percent(native)));
+      scores.append(scoreRow);
+    }
+    body.append(scrollTable(table, `${item.project} vision scores`), node('h4', 'An actual image question'));
+    const figure = node('figure', null, 'vision-example');
+    const image = node('img'); image.src = item.example.image; image.alt = `Evaluation image for ${item.project}, case ${item.example.id}`; image.loading = 'lazy';
+    const caption = node('figcaption', `Case ${item.example.id}. Source: ${item.project}. Original evaluated PNG, no additional preprocessing. `);
+    const sourceURL = item.source.url || (item.source.repository ? `https://huggingface.co/datasets/${item.source.repository}` : null);
+    if (sourceURL?.startsWith('https://')) { const link = node('a', 'Dataset source and terms ↗'); link.href = sourceURL; caption.append(link); }
+    figure.append(image, caption); body.append(figure, questionBlock(item.example.question, item.example.gold));
+    body.append(node('p', 'This is the first source case, not selected for model performance. The answer shown is dataset gold, not a model output.'));
+    const provenance = node('details'); provenance.append(node('summary', 'Source, image hash and answer options'),
+      pre({ source: item.source, imageSha256: item.example.imageSha256, options: item.example.options }));
+    body.append(provenance); details.append(body); $('vision-items').append(details);
+  }
+
   let examples = null; let filtered = []; let loading = false;
   function renderExample() {
     const id = $('example-id').value; const index = filtered.findIndex(row => row.id === id); const example = filtered[index];
@@ -224,7 +271,7 @@ async function init() {
   }
   function openAnchor() {
     const id = location.hash.slice(1);
-    if (['public-set', 'decision-set', 'methodology'].includes(id)) $(id).open = true;
+    if (['public-set', 'decision-set', 'vision-set', 'methodology'].includes(id)) $(id).open = true;
   }
   window.addEventListener('hashchange', openAnchor); openAnchor();
   // Reopen a section even if its hash is already selected and the reader closed it.

@@ -44,6 +44,12 @@ try {
   await page.click('[data-sort="decisionScore"]');
   assert.equal(await page.locator('#decision-heading').getAttribute('aria-sort'), 'descending');
   assert.equal(await page.locator('#public-heading').getAttribute('aria-sort'), 'none');
+  await page.click('[data-sort="visionScore"]');
+  assert.match(await page.locator('#leaderboard tr').first().innerText(), /Qwen3.6-35B-A3B/);
+  assert.equal(await jevRow.locator('td').first().innerText(), '—');
+  assert.equal(await jevRow.locator('td').last().innerText(), '—\nNot evaluated');
+  assert.equal(await page.locator('#leaderboard .vision-leader-row').count(), 1);
+  await page.click('[data-sort="decisionScore"]');
   await page.screenshot({ path: '/tmp/simple-jev-evaluations-desktop.png', fullPage: true });
   await page.click('a[href="#public-set"]');
   await page.waitForSelector('#public-example tbody tr');
@@ -89,6 +95,17 @@ try {
   await page.fill('#decision-search', 'not-a-benchmark');
   assert.equal(await page.locator('#decision-items > details').count(), 0);
   await page.fill('#decision-search', '');
+
+  await page.click('a[href="#vision-set"]');
+  assert.equal(await page.locator('#vision-breakdown tbody tr').count(), 7);
+  assert.equal(await page.locator('#vision-items > details').count(), 7);
+  assert.equal(await page.locator('#vision-items .comparison-win, #vision-items .comparison-loss').count(), 0);
+  await page.locator('#vision-items > details > summary').first().click();
+  await page.locator('#vision-items img').first().scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => { const image = document.querySelector('#vision-items img'); return image.complete && image.naturalWidth > 0; });
+  assert.equal(await page.locator('#vision-items > details').first().locator('tbody tr').count(), 6);
+  await page.locator('#vision-items > details > summary').nth(2).click();
+  assert.match(await page.locator('#vision-items > details').nth(2).innerText(), /Native MME \/ 2,000/);
 
   for (const width of [390, 768]) {
     await page.setViewportSize({ width, height: 844 });
