@@ -116,31 +116,48 @@ try {
   assert.equal(await page.locator('#vision-breakdown thead th').last().innerText(), 'Jev 1.13');
   const snapshot = JSON.parse(await readFile(resolve(root, 'assets/evaluations/results.json'), 'utf8'));
   const visionHeaders = await page.locator('#vision-breakdown thead th').allTextContents();
-  for (let i = 0; i < snapshot.visionItems.length; i++) {
-    const item = snapshot.visionItems[i];
+  const displayedVisionItems = [...snapshot.visionItems].sort((a, b) => Number(a.id === 'vision-cifar10') - Number(b.id === 'vision-cifar10'));
+  assert.match(await page.locator('#vision-breakdown tbody tr').last().innerText(), /CIFAR-10/);
+  assert.equal(await page.locator('#vision-items > details').last().getAttribute('data-suite'), 'vision-cifar10');
+  for (let i = 0; i < displayedVisionItems.length; i++) {
+    const item = displayedVisionItems[i];
     const cells = page.locator('#vision-breakdown tbody tr').nth(i).locator('td');
     const best = Math.max(...Object.values(item.scores).filter(v => v != null));
     for (let j = 0; j < 6; j++) {
       const model = snapshot.models.find(m => m.name === visionHeaders[j + 1]);
-      assert.equal(await cells.nth(j).locator('.winner-badge').count(), item.scores[model.id] === best ? 1 : 0);
+      assert.equal(await cells.nth(j).evaluate(e => e.classList.contains('vision-winner')), item.scores[model.id] === best);
     }
   }
   await page.locator('#vision-breakdown').screenshot({ path: '/tmp/simple-jev-vision-winners.png' });
   assert.equal(await page.locator('#vision-items > details').count(), 7);
   assert.equal(await page.locator('#vision-items .comparison-win, #vision-items .comparison-loss').count(), 0);
-  await page.locator('#vision-items > details > summary').first().click();
-  await page.locator('#vision-items img').first().scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => { const image = document.querySelector('#vision-items img'); return image.complete && image.naturalWidth > 0; });
-  assert.equal(await page.locator('#vision-items > details').first().locator('tbody tr').count(), 6);
-  assert.equal(await page.locator('#vision-items > details').first().locator('thead th').count(), 2);
-  assert.equal(await page.locator('#vision-items > details').first().locator('.winner-badge').count(), 1);
-  const cifarImage = page.locator('#vision-items img').first();
+  const cifarDetail = page.locator('[data-suite="vision-cifar10"]');
+  await cifarDetail.locator(':scope > summary').click();
+  const cifarImage = cifarDetail.locator('img');
+  await cifarImage.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => { const image = document.querySelector('[data-suite="vision-cifar10"] img'); return image.complete && image.naturalWidth > 0; });
+  assert.equal(await cifarDetail.locator('tbody tr').count(), 6);
+  assert.equal(await cifarDetail.locator('thead th').count(), 2);
+  assert.equal(await cifarDetail.locator('.vision-winner').count(), 1);
+  assert.equal(await page.locator('.winner-badge').count(), 0);
   assert.equal(await cifarImage.evaluate(e => e.naturalWidth), 32);
   assert.equal(await cifarImage.evaluate(e => getComputedStyle(e).imageRendering), 'pixelated');
-  assert.match(await page.locator('#vision-items > details').first().innerText(), /image-000010/);
-  await page.locator('#vision-items > details').first().screenshot({ path: '/tmp/simple-jev-cifar-example.png' });
-  await page.locator('#vision-items > details > summary').nth(2).click();
-  assert.match(await page.locator('#vision-items > details').nth(2).innerText(), /Native MME \/ 2,000/);
+  assert.match(await cifarDetail.innerText(), /image-000010/);
+  await cifarDetail.screenshot({ path: '/tmp/simple-jev-cifar-example.png' });
+  const mmeDetail = page.locator('[data-suite="vision-mme-perception"]');
+  await mmeDetail.locator(':scope > summary').click();
+  assert.match(await mmeDetail.innerText(), /Native MME \/ 2,000/);
+  const popeSources = [];
+  for (const variant of ['adversarial', 'popular', 'random']) {
+    const detail = page.locator(`[data-suite="vision-pope-${variant}"]`);
+    await detail.locator(':scope > summary').click();
+    const image = detail.locator('img');
+    await image.scrollIntoViewIfNeeded();
+    await image.evaluate(e => e.complete ? Promise.resolve() : new Promise((resolve, reject) => { e.onload = resolve; e.onerror = reject; }));
+    assert.ok(await image.evaluate(e => e.naturalWidth > 0));
+    popeSources.push(await image.getAttribute('src'));
+  }
+  assert.equal(new Set(popeSources).size, 3);
 
   for (const width of [390, 768]) {
     await page.setViewportSize({ width, height: 844 });

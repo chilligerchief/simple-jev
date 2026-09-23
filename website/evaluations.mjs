@@ -58,7 +58,7 @@ function visionScoreCell(modelId, scores, format = percent) {
   const winners = bestModelIds(scores);
   const winner = winners.includes(modelId);
   const cell = node('td', value == null ? '—' : format(value), value == null ? 'comparison-baseline' : winner ? 'vision-winner' : 'vision-score');
-  if (winner) cell.append(node('small', winners.length > 1 ? 'Joint winner' : 'Winner', 'winner-badge'));
+  if (winner) cell.setAttribute('aria-label', `${format(value)}; ${winners.length > 1 ? 'joint highest' : 'highest'} measured score`);
   if (value == null) cell.append(node('small', 'Not evaluated'));
   return cell;
 }
@@ -139,7 +139,7 @@ async function init() {
         visionCell.append(node('span', percent(model.visionScore), 'score-number'), track, node('small', 'Mean accuracy · 7 configs'));
         if (model.visionScore === bestVision) {
           visionCell.classList.add('vision-winner');
-          visionCell.append(node('small', 'Winner · vision mean', 'winner-badge'));
+          visionCell.setAttribute('aria-label', `${percent(model.visionScore)}; highest measured vision mean`);
         }
       }
       row.append(visionCell); body.append(row);
@@ -208,12 +208,14 @@ async function init() {
   const visionModels = rankModels(models, 'visionScore'); // Unmeasured Jev is last, never treated as zero.
   const visionTable = $('vision-breakdown'); visionTable.className = 'breakdown-table vision-matrix';
   const visionBody = tableHeader(visionTable, ['Benchmark / questions', ...visionModels.map(m => m.name)]);
-  for (const item of data.visionItems) {
+  const visionItems = [...data.visionItems].sort((a, b) => Number(a.id === 'vision-cifar10') - Number(b.id === 'vision-cifar10'));
+  for (const item of visionItems) {
     const row = node('tr'); const label = rowHeader(`${item.project} · ${item.configuration}`);
     label.append(node('small', `${item.rows.toLocaleString()} questions`)); row.append(label);
     for (const model of visionModels) row.append(visionScoreCell(model.id, item.scores));
     visionBody.append(row);
     const details = node('details', null, 'item-detail');
+    details.dataset.suite = item.id;
     const summary = node('summary', `${item.project} · ${item.configuration}`);
     summary.append(node('small', `${item.rows.toLocaleString()} questions · weight 1/7`), itemToggle()); details.append(summary);
     const body = node('div', null, 'item-body'); body.append(node('p', item.description));

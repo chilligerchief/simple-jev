@@ -115,6 +115,11 @@ test('vision is seven matched accuracy configurations with no invented Jev score
       assert.ok(item.scores[model.id] >= 0 && item.scores[model.id] <= 1);
     }
   }
+  const pope = data.visionItems.filter(item => item.project === 'POPE');
+  assert.deepEqual(pope.map(item => item.example.id), ['2', '8', '14']);
+  assert.equal(new Set(pope.map(item => item.example.imageSha256)).size, 3);
+  assert.equal(new Set(pope.map(item => item.example.question)).size, 3);
+  assert.ok(pope.every(item => item.example.gold === 'no'));
   const cifar = data.visionItems.find(item => item.project === 'CIFAR-10');
   assert.equal(cifar.example.id, 'image-000010');
   assert.equal(cifar.example.gold, 'airplane');
@@ -165,6 +170,12 @@ test('page has accessible disclosures, prompt column, caveats, sources and no un
   const html = read('../evaluations.html');
   for (const id of ['public-set', 'decision-set', 'vision-set', 'methodology']) assert.ok(html.includes(`<details id="${id}"`));
   assert.match(html, /Preferred prompt format/);
+  const header = html.split('<header')[1].split('</header>')[0];
+  assert.match(header, /assets\/simple-jev\.png/);
+  assert.match(header, /assets\/featherless_logo_dark\.svg/);
+  assert.match(header, /href="how-it-works.html"/);
+  assert.match(header, /href="index.html#rfdt"/);
+  assert.doesNotMatch(read('../evaluations.mjs'), /Winner · vision mean|winner-badge/);
   assert.match(html, /not held-out accuracy/);
   assert.doesNotMatch(html.split('<details id="public-set"')[0], /199\/231/);
   const publicSection = html.split('<details id="public-set"')[1].split('<details id="decision-set"')[0];

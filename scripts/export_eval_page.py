@@ -169,9 +169,15 @@ def main():
         assert manifest == load(ev / 'suites/english' / (suite_id + '.json')), suite_id
         dataset = ((root / manifest_path).parent / manifest['dataset']).resolve()
         rows = lines(dataset.relative_to(root))
-        # CIFAR's first cat is hard to recognize at 32x32. Use a clearer airplane
-        # chosen visually, without consulting any model's answer or changing scores.
-        row = next(r for r in rows if r['id'] == 'image-000010') if suite_id == 'vision-cifar10' else rows[0]
+        # Select source examples without consulting any model's answers.
+        # POPE variants share images: use distinct absent-object cases to make
+        # their different negative-question sampling easier to illustrate.
+        example_ids = {'vision-cifar10': 'image-000010', 'vision-pope-adversarial': '2',
+                       'vision-pope-popular': '8', 'vision-pope-random': '14'}
+        row = next(r for r in rows if r['id'] == example_ids[suite_id]) if suite_id in example_ids else rows[0]
+        selection = ('Selected for visual clarity, not model performance.' if suite_id == 'vision-cifar10'
+                     else 'An absent-object case on a distinct image, selected to illustrate this POPE variant, not model performance.' if project == 'POPE'
+                     else 'First source case, not selected for model performance.')
         image_path = (dataset.parent / row['image_path']).resolve()
         image = read(image_path.relative_to(root))
         assert hashlib.sha256(image).hexdigest() == row['image_sha256']
@@ -194,7 +200,7 @@ def main():
             'nativeMetric': manifest['headline_metric'], 'nativeScores': native_scores,
             'source': manifest['source'],
             'example': {'id': row['id'], 'question': row['question'], 'gold': gold,
-                        'selection': 'Selected for visual clarity, not model performance.' if suite_id == 'vision-cifar10' else 'First source case, not selected for model performance.',
+                        'selection': selection,
                         'options': row.get('options'), 'imageSha256': row['image_sha256'],
                         'image': 'assets/evaluations/images/' + image_name},
         })

@@ -15,12 +15,15 @@
   <a class="skip-link" href="#main">Skip to evaluations</a>
   <header class="site-header wrap">
     <a class="wordmark" href="index.html" aria-label="Simple Jev home"><img class="brand-logo" src="assets/simple-jev.png" alt="Simple Jev" width="64" height="64" /></a>
+    <a class="built-by header-credit" href="https://featherless.ai/" aria-label="Built by Featherless.ai"><span>Built by</span><img src="assets/featherless_logo_dark.svg" alt="Featherless.ai" width="156" height="51" /></a>
     <nav aria-label="Main navigation">
       <a class="demos-nav" href="demos.html">Cool demos</a>
       <a class="playground-nav" href="playground.html">Playground</a>
       <a class="eval-nav" href="evaluations.html" aria-current="page">Evaluations</a>
       <a class="docs-link" href="docs.html">API docs</a>
-      <a class="nav-github" href="https://github.com/featherless-ai/simple-jev">GitHub ↗</a>
+      <a href="how-it-works.html">How it works</a>
+      <a href="index.html#rfdt">RFDT</a>
+      <a class="nav-github" href="https://github.com/featherless-ai/simple-jev">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </header>
   <main id="main" class="wrap eval-page">
@@ -95,9 +98,10 @@
       <summary><span><span class="eyebrow">03 / VISION BENCHMARKS</span><span class="section-title">Decisions grounded in images</span><span class="section-subtitle">63,372 questions per model · seven configurations · recognition, perception, hallucination and counting</span><span class="section-action when-closed">Click to expand: see the various questions with images</span></span><span class="expand-mark"><span class="when-closed">View breakdown</span><span class="when-open">Hide breakdown</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></span></summary>
       <div class="section-body">
         <p>Five image-capable models completed the same seven configurations with no failed rows. Jev has no measured vision result here: “—” means unavailable, not zero, and no model is labelled as beating Jev on vision.</p>
+        <p><strong>Why three POPE variants?</strong> They share the same underlying images but choose absent objects differently: random samples objects randomly, popular uses frequent objects, and adversarial uses objects that often co-occur with those present. The examples below intentionally use three different images and absent-object questions to illustrate the variants.</p>
         <h3>Accuracy breakdown</h3>
         <p>The headline is a page-specific summary: the arithmetic mean of seven per-question accuracies, not pooled accuracy or an official combined leaderboard score. The three POPE variants each receive one-seventh weight. MME’s native score (out of 2,000) and POPE’s native F1 are preserved inside the item details.</p>
-        <p class="vision-key"><strong>Winner</strong> marks the highest measured accuracy in each row; equal best scores share the badge. Jev is shown at the far right as not evaluated. Inside each breakdown, native metrics have their own winners.</p>
+        <p class="vision-key"><strong>Blue highlighting</strong> marks the highest measured accuracy in each row; equal best scores share the highlight. Jev is shown at the far right as not evaluated. Inside each breakdown, native metrics have their own winners.</p>
         <div class="eval-scroll" tabindex="0" role="region" aria-label="Vision accuracy breakdown"><table id="vision-breakdown"></table></div>
         <p>The selected text prompt formats were transferred to vision without a separate vision prompt search. These measurements used the image-capable evaluation implementation. Image-builder now supports native messages and images with named prompt policies; image availability depends on the deployed build and model.</p>
         <div id="vision-items"></div>

@@ -460,10 +460,10 @@
         "annotation_sha256": "420b3407db1fa9f1187a805dca41cb7b97fd91504e6c2179706188c107fb8ef8"
       },
       "example": {
-        "id": "1",
-        "question": "Is there a snowboard in the image?",
-        "gold": "yes",
-        "selection": "First source case, not selected for model performance.",
+        "id": "2",
+        "question": "Is there a backpack in the image?",
+        "gold": "no",
+        "selection": "An absent-object case on a distinct image, selected to illustrate this POPE variant, not model performance.",
         "options": null,
         "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
         "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
@@ -499,13 +499,13 @@
         "annotation_sha256": "72c1a8ad45d0c13514f5f22598261df41d3b533854d29682e924db50ed8aa753"
       },
       "example": {
-        "id": "1",
-        "question": "Is there a snowboard in the image?",
-        "gold": "yes",
-        "selection": "First source case, not selected for model performance.",
+        "id": "8",
+        "question": "Is there a dining table in the image?",
+        "gold": "no",
+        "selection": "An absent-object case on a distinct image, selected to illustrate this POPE variant, not model performance.",
         "options": null,
-        "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
-        "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
+        "imageSha256": "57a7a7c67817374be01e5cd3fb19bc0c8d19c7bd31ad9ac28232b69cf56fe50b",
+        "image": "assets/evaluations/images/57a7a7c67817374be01e5cd3fb19bc0c8d19c7bd31ad9ac28232b69cf56fe50b.png"
       }
     },
     {
@@ -538,13 +538,13 @@
         "annotation_sha256": "ac25245170b975a5bdf9080b23fd431dfe6be458bc038259c1f4f09a6bef7994"
       },
       "example": {
-        "id": "1",
-        "question": "Is there a snowboard in the image?",
-        "gold": "yes",
-        "selection": "First source case, not selected for model performance.",
+        "id": "14",
+        "question": "Is there a sheep in the image?",
+        "gold": "no",
+        "selection": "An absent-object case on a distinct image, selected to illustrate this POPE variant, not model performance.",
         "options": null,
-        "imageSha256": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
-        "image": "assets/evaluations/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png"
+        "imageSha256": "e8cd64a40677b7eb28d0eb877f30a2c29d85ebd8b3a4ac183fbadb796333cbf9",
+        "image": "assets/evaluations/images/e8cd64a40677b7eb28d0eb877f30a2c29d85ebd8b3a4ac183fbadb796333cbf9.png"
       }
     },
     {
@@ -2502,11 +2502,11 @@
     "simple-jev-prompt-lab/eval/suites/english/vision-pope-popular.json": "8e24f8e4b6101a68965288bc8f6b65c1842c677a3640af5424b36ff52c78e06b",
     "simple-jev-eval/eval/suites/english/vision-pope-popular.json": "8e24f8e4b6101a68965288bc8f6b65c1842c677a3640af5424b36ff52c78e06b",
     "simple-jev-prompt-lab/eval/data/vision-pope-popular/rows.jsonl": "73371a2b1bd72a6c41e6b16d233ae405b5f02e18d18b6e76988c72a47136baa2",
-    "simple-jev-prompt-lab/eval/data/vision-pope-popular/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
+    "simple-jev-prompt-lab/eval/data/vision-pope-popular/images/57a7a7c67817374be01e5cd3fb19bc0c8d19c7bd31ad9ac28232b69cf56fe50b.png": "57a7a7c67817374be01e5cd3fb19bc0c8d19c7bd31ad9ac28232b69cf56fe50b",
     "simple-jev-prompt-lab/eval/suites/english/vision-pope-random.json": "c0defeb6050b2f17d2b1a020c84f8ce04097b68ce7a059d363dfa06e0bfa87bc",
     "simple-jev-eval/eval/suites/english/vision-pope-random.json": "c0defeb6050b2f17d2b1a020c84f8ce04097b68ce7a059d363dfa06e0bfa87bc",
     "simple-jev-prompt-lab/eval/data/vision-pope-random/rows.jsonl": "45bdb2ff458a873165626b174ba6440f20cb99b063eb9949fa25477d32f9bc36",
-    "simple-jev-prompt-lab/eval/data/vision-pope-random/images/d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9.png": "d9a21425c951840c4fcd1328f1cef8a2dc45ce53705f28f94ecbfc9ec5cca6f9",
+    "simple-jev-prompt-lab/eval/data/vision-pope-random/images/e8cd64a40677b7eb28d0eb877f30a2c29d85ebd8b3a4ac183fbadb796333cbf9.png": "e8cd64a40677b7eb28d0eb877f30a2c29d85ebd8b3a4ac183fbadb796333cbf9",
     "simple-jev-prompt-lab/eval/suites/english/vision-tallyqa.json": "db2cc3df6264a6bbc6dbb8cb8612dcadfdd1dde894e4ca3594f535216b696df2",
     "simple-jev-eval/eval/suites/english/vision-tallyqa.json": "db2cc3df6264a6bbc6dbb8cb8612dcadfdd1dde894e4ca3594f535216b696df2",
     "simple-jev-prompt-lab/eval/data/vision-tallyqa/rows.jsonl": "ba11e377734a15d189134a160c1dd9c693ae4caea1c4a4de339402eed3f9d365",
