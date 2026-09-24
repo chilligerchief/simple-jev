@@ -1,5 +1,9 @@
 # HF versus saved vLLM — 477-case parity measurement
 
+**Follow-up:** the rendering discrepancy is fixed. See the
+[matched-token Gemma rerun](rendering-fix.md) for new GPU measurements.
+This page preserves the original, pre-fix measurement.
+
 **Not exact parity.** All five HF GPU runs succeeded, with 2,385 responses,
 zero failed requests, and successful raw-response/coverage audits. Only Qwen4B
 matched every benchmark decision. No model matched probabilities exactly.
