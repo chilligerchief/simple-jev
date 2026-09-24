@@ -59,7 +59,7 @@ Cloud-specific launchers, cost monitors, automatic resubmission/rebalancing,
 patches are intentionally not installed in the public evaluation client. Manage
 servers separately; select supported startup policies explicitly and preserve
 runtime provenance. This port does not submit jobs, rebuild containers, or assert
-HF/vLLM numeric equivalence.
+numeric equivalence across execution environments.
 
 The website snapshot exporter remains a separate, historical-archive exporter
 with its documented archive layout. For new portable runs use `report.py`,

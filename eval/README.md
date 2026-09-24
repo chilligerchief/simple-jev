@@ -206,8 +206,8 @@ python eval/run.py --endpoint http://127.0.0.1:8000/v1/classifier \
 The `jevbench-accuracy-v1` adapter preserves native choice, score and Noul
 requests, including criteria order. Only state and the question's type,
 instructions and criteria go to the endpoint. Labels, expected answers and
-provenance stay local. It works with HF and vLLM classifier implementations;
-backend prompting remains backend-owned.
+provenance stay local. It works with compatible classifier endpoints;
+prompting remains endpoint-owned.
 
 The headline is **unweighted accuracy: correct / scorable requested decisions**.
 Each question counts once; no tier/family weighting, cost, speed, calibration,

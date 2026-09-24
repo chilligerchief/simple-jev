@@ -2,8 +2,8 @@
 
 Standalone classifier HTTP API using Hugging Face Transformers and PyTorch.
 Classifier validation, prompt text, and response scoring come from the sibling
-`common/` folder. Keep both folders in the checkout. No Open-JEV or vLLM runtime
-is required. The HF package includes `common` when installed/built from this repo.
+`common/` folder. Keep both folders in the checkout.
+The HF package includes `common` when installed/built from this repo.
 
 ## Install and run
 
@@ -107,15 +107,10 @@ reasoning or output tokens. A template that drops the fixed prefill is rejected.
 Binary Noul returns `{"type":"noul","noul":P(yes)}` in [0,1], with no nine-bin
 0.01–0.99 remapping or nested rating diagnostics. Choice/Score math is unchanged.
 
-These formats came from vLLM prompt-selection experiments. The initial
-[477-case HF/vLLM comparison](../eval/benchmarks/hf-vllm-parity/2026-09-24/README.md)
-completed all five HF GPU runs and exposed a Gemma content-representation mismatch.
-Named policies now pass text blocks to the native template, matching the serving
-renderer while leaving baseline unchanged. All 2,385 prompt/answer-token sequences
-match the saved vLLM traces. [Fresh matched-token Gemma reruns](../eval/benchmarks/hf-vllm-parity/2026-09-24/rendering-fix.md)
-agree on 473/477 (12B) and 470/477 (MoE) decisions: numeric and decision parity
-are still not exact. These are development-set measurements, not held-out results
-or a throughput benchmark.
+These formats were selected in development-set prompt experiments, not held-out
+evaluation. Named policies pass text blocks to the model's native template while
+leaving baseline rendering unchanged. Prompt selection does not establish
+numerical equivalence across execution environments or a throughput guarantee.
 Repetition consumes additional context; the complete rendered branch remains
 subject to `--max-model-len`. Advanced metadata identifies
 `hf-<policy>-v1` instead of the baseline `v1` template.

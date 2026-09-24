@@ -38,7 +38,7 @@ def request(state='An animal is a cat.'):
     })
 
 
-# Independently derived from the frozen vLLM context_repeat95/repeat95 hooks.
+# Independently derived from the frozen context_repeat95/repeat95 experiment hooks.
 FROZEN = {
     ('examples_binary', 'text'): '19b2f634fb15a158044fa3a6e5f7e7c9c2c45a10851f3dbe89772c0beacad46e',
     ('examples_binary', 'json'): '554820b7b7d27c525ff4b8d79d26670c7209a54d54a496d9339441a53c342629',
@@ -196,7 +196,7 @@ def test_content_sensitive_native_template_boundary_and_baseline(policy):
             text = super().apply_chat_template(messages, **kwargs)
             # Model the native template's content-type-sensitive system boundary.
             # The actual cached Gemma templates are separately checked against
-            # saved vLLM token traces for every one of the 477 requests.
+            # saved reference token traces for every one of the 477 requests.
             system = messages[0]['content'][0]['text']
             return text.replace(system + '\nuser:', system + ' <system-end>\nuser:', 1)
     req = request()

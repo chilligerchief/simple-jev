@@ -1,7 +1,7 @@
 """JEVfire fixtures as one batched classifier request per original case.
 
 Boolean fields use two-option Choice, preserving a finite-value decision contract.
-This does not recreate JEVfire's vLLM cache-salt or generation timing experiment.
+This does not recreate JEVfire's cache-salt or generation timing experiment.
 """
 from . import choice
 

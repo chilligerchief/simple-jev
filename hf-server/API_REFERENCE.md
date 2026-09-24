@@ -1,7 +1,7 @@
 # Simple-JEV HTTP API reference
 
 This reference describes the standalone Hugging Face implementation in
-`hf_server.py`, version 0.1.0. It does not require vLLM. The API evaluates many
+`hf_server.py`, version 0.1.0. The API evaluates many
 questions against one context and returns JSON in one non-streaming response.
 It reads selected next-token logits; it does not generate prose answers.
 
