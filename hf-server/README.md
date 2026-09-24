@@ -107,10 +107,14 @@ reasoning or output tokens. A template that drops the fixed prefill is rejected.
 Binary Noul returns `{"type":"noul","noul":P(yes)}` in [0,1], with no nine-bin
 0.01–0.99 remapping or nested rating diagnostics. Choice/Score math is unchanged.
 
-These formats came from vLLM prompt-selection experiments, not fresh HF quality
-or throughput measurements. Native tokenization and numerical results may
-vary by runtime. Repetition consumes additional context; the complete rendered
-branch remains subject to `--max-model-len`. Advanced metadata identifies
+These formats came from vLLM prompt-selection experiments. A subsequent
+[477-case HF/vLLM comparison](../eval/benchmarks/hf-vllm-parity/2026-09-24/README.md)
+completed all five HF GPU runs: decision agreement was 468–477/477, but numeric
+parity was not exact. Qwen prompt tokens matched; the saved Gemma vLLM traces
+contained one extra system-boundary space token. These are development-set
+measurements, not held-out results or a throughput benchmark.
+Repetition consumes additional context; the complete rendered branch remains
+subject to `--max-model-len`. Advanced metadata identifies
 `hf-<policy>-v1` instead of the baseline `v1` template.
 
 This is a prompt/scoring-adapter addition only: model loading, precision, cache
