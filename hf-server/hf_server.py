@@ -213,8 +213,16 @@ class PromptCompiler:
                     assistant = {"role": "assistant", "content": question.answer_prefix}
                     if reasoning_content is not None:
                         assistant["reasoning_content"] = reasoning_content
+                    # Match the native serving renderer's OpenAI text-block
+                    # representation. Templates may distinguish a string from
+                    # one text block (e.g. a system-turn boundary space). Do not
+                    # hardcode model names, whitespace, or tokenizer IDs here.
+                    native_messages = [
+                        {**message, "content": [{"type": "text", "text": message["content"]}]}
+                        for message in messages + [assistant]
+                    ]
                     text = self.tokenizer.apply_chat_template(
-                        messages + [assistant], tokenize=False,
+                        native_messages, tokenize=False,
                         add_generation_prompt=False, continue_final_message=True,
                         enable_thinking=reasoning_content is not None,
                     )

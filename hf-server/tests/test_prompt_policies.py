@@ -22,7 +22,9 @@ class NativeTokenizer(Tokenizer):
         assert kwargs == {'tokenize': False, 'add_generation_prompt': False,
                           'continue_final_message': True,
                           'enable_thinking': 'reasoning_content' in messages[-1]}
-        return '\n'.join(f"{m['role']}: {m.get('reasoning_content', '')}{m['content']}" for m in messages)
+        assert all(isinstance(m['content'], list) for m in messages)
+        assert all(len(m['content']) == 1 and m['content'][0]['type'] == 'text' for m in messages)
+        return '\n'.join(f"{m['role']}: {m.get('reasoning_content', '')}{m['content'][0]['text']}" for m in messages)
 
 
 def request(state='An animal is a cat.'):
@@ -139,7 +141,7 @@ def test_context_and_render_only(policy):
 def test_template_that_discards_reasoning_fails():
     class NoReasoning(NativeTokenizer):
         def apply_chat_template(self, messages, **kwargs):
-            return '\n'.join(m['content'] for m in messages)
+            return '\n'.join(m['content'][0]['text'] for m in messages)
     with pytest.raises(ValueError, match='did not preserve'):
         PromptCompiler(NoReasoning(), prompt_policy='examples_binary').compile(request())
 
@@ -182,6 +184,30 @@ def test_loader_preserves_checkpoint_precision_and_batch_settings(monkeypatch, p
     assert service.backend.max_batch_size == 7
     assert service.backend.max_batch_tokens == 1234
     assert service._capacity == 17  # Unchanged concurrency1 + queue16.
+
+
+@pytest.mark.parametrize('policy', PROMPT_POLICIES)
+def test_content_sensitive_native_template_boundary_and_baseline(policy):
+    class ContentSensitiveTokenizer(NativeTokenizer):
+        def apply_chat_template(self, messages, **kwargs):
+            if kwargs.get('add_generation_prompt'):
+                assert all(isinstance(m['content'], str) for m in messages)
+                return super().apply_chat_template(messages, **kwargs)
+            text = super().apply_chat_template(messages, **kwargs)
+            # Model the native template's content-type-sensitive system boundary.
+            # The actual cached Gemma templates are separately checked against
+            # saved vLLM token traces for every one of the 477 requests.
+            system = messages[0]['content'][0]['text']
+            return text.replace(system + '\nuser:', system + ' <system-end>\nuser:', 1)
+    req = request()
+    before = req.model_dump()
+    compiled = PromptCompiler(ContentSensitiveTokenizer(), prompt_policy=policy).compile(req)
+    for branch in compiled.branches:
+        text = bytes(branch.token_ids).decode()
+        assert (' <system-end>\nuser:' in text) == (policy != 'baseline')
+        # Normalization is local to rendering; inspectable plans stay unchanged.
+        assert all(isinstance(m['content'], str) for m in branch.messages)
+    assert req.model_dump() == before
 
 
 def test_noul_only_keeps_nine_bins_and_legacy_policy_wording():
