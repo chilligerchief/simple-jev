@@ -42,6 +42,22 @@ JSON
 
 For production deployments, [Featherless paid plans](https://featherless.ai/) offer higher limits. To run the server yourself, follow the setup below.
 
+## Evaluation tooling
+
+The [evaluation framework](eval/README.md) includes native JevBench scoring,
+text/decision and vision suites, dataset preparation, resumable HTTP execution,
+raw-response audits, and matched-metric comparisons. The client needs no GPU.
+
+```bash
+python3 eval/run.py --preset quick --list  # 477 development/selection decisions
+python3 eval/run.py --preset full --list  # frozen text and vision selections
+python3 -m unittest discover -s eval -p 'test_*.py'  # offline checks
+```
+
+Prepare the selected datasets and start a compatible classifier endpoint before
+execution. Large datasets, model weights and raw evaluation runs are not bundled;
+see the [reproduction instructions](eval/README.md#portable-presets-and-full-reproduction).
+
 ## Running the HF Server
 
 Use Python 3.12 or newer. The commands below use Python 3.13.
