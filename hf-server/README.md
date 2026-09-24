@@ -135,7 +135,8 @@ simple-jev --model Qwen/Qwen3.8-27B --device auto \
   evaluated nine-bin Noul wording/scoring. No extra worked-example block.
 
 The three named policies accept **text/JSON `state` only**, not `messages`;
-use `baseline` to preserve text chat turns. HF still rejects images/tools.
+use `baseline` to preserve text chat turns. Tools are still rejected; images
+require `--enable-images` and take the baseline chat shape.
 Choice branches prefill three fixed `[thinking]` lines through the model's native
 chat template; Score/Noul branches answer directly. This does not generate
 reasoning or output tokens. A template that drops the fixed prefill is rejected.
@@ -190,9 +191,16 @@ one forward and is not chunked by `--max-batch-tokens`.
 
 ## Scope and validation
 
-This reference currently accepts **text only**, including text messages.
-Images, audio, video and tool calls are rejected. A multimodal model loader does
-not imply multimodal input support. Models need a compatible Transformers cache
+This reference accepts text by default, including text messages. Audio, video
+and tool calls are rejected. A multimodal model loader alone does not enable
+image input. With `--enable-images` on a vision model that provides a
+Transformers processor, chat messages may carry OpenAI-style content blocks
+mixing `text` parts with `image_url` parts whose URLs are inline base64 data
+URLs (`data:image/...;base64,...`, at most 16 images per request). Remote image
+URLs are never fetched. Image requests use the model processor's chat template
+and run one independent full-prompt forward per question instead of the
+shared-prefix cache reuse below; named prompt policies do not apply to chat.
+Models need a compatible Transformers cache
 that supports copying and `reorder_cache`, a chat template, and single-token
 rating/choice labels. Arbitrary model compatibility is not guaranteed.
 

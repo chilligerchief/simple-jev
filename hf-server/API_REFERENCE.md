@@ -100,7 +100,7 @@ coercion.
 | --- | --- | --- | --- |
 | `model` | string | Required; nonempty | Any nonempty ID is accepted by default. With `--enforce-model-id`, it must match the served name. The HTTP request does not load or switch models. |
 | `state` | string, object, array, or null | Supply exactly one non-null `state` or `messages` | Shared context. Objects/arrays are serialized into prompt text; they are not executable state. A top-level number or boolean is not supported. |
-| `messages` | array of messages or null | Alternative to `state`; at least one message | Text chat history rendered with the model's chat template. |
+| `messages` | array of messages or null | Alternative to `state`; at least one message | Chat history rendered with the model's chat template. Text-only unless the server runs with `--enable-images`. |
 | `questions` | object mapping IDs to questions | Required; 1–256 entries at schema level | IDs must be nonempty strings. The server's branch limit is additionally enforced, default 100. |
 | `options` | object | Defaults shown below | Response diagnostics; prompt/scoring rules are fixed by v1. |
 | `tools` | array of objects or null | Omitted/null | Reserved in the schema; nonempty values are rejected by the HF implementation. |
@@ -119,12 +119,30 @@ For this HF implementation each message contains only:
 | Field | Supported value |
 | --- | --- |
 | `role` | `system`, `developer`, `user`, or `assistant` |
-| `content` | String, including an empty string |
+| `content` | String, including an empty string. With `--enable-images`, user/assistant messages may instead use a content-block array (below). |
 
-The shared schema also describes `tool`/`function` roles, null content, content
-part arrays and extra message fields. **The HF compiler rejects these.** Images,
-audio, video, tool calls, `name`, and other extra message properties are not
-supported. A model's chat template may further restrict roles or their order.
+The shared schema also describes `tool`/`function` roles, null content, and
+extra message fields. **The HF compiler rejects these.** Audio, video, tool
+calls, `name`, and other extra message properties are not supported. A model's
+chat template may further restrict roles or their order.
+
+When the server is started with `--enable-images` and a vision model that
+provides a Transformers processor, `content` on `user`/`assistant` messages may
+be an array of blocks:
+
+```json
+{"role": "user", "content": [
+  {"type": "text", "text": "What is shown?"},
+  {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBOR..."}}
+]}
+```
+
+Only inline base64 data URLs (`data:image/...;base64,...`) are accepted, up to
+16 images per request; the server never fetches remote URLs. System messages
+must remain plain strings. Undecodable or oversized image data returns 422.
+Without `--enable-images` (the default), content-block arrays are rejected.
+Image requests are scored with one independent full-prompt forward per question
+rather than shared-prefix cache reuse, so they cost more compute per question.
 
 For chat input replace `state` in the example with:
 

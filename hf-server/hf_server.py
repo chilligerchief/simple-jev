@@ -15,8 +15,8 @@ Request flow:
 
 common owns validation, default versioned classifier wording, label semantics,
 and answer math. hf_prompt_policies adds startup-selected formatting and binary Noul
-adaptation without modifying common. This file owns text-only role assembly,
-native chat/tokenizer boundaries,
+adaptation without modifying common. This file owns role assembly, optional
+inline-image decoding, native chat/tokenizer/processor boundaries,
 shared-prefix inference, queue/cancellation controls, usage accounting, HTTP, and
 startup. Model weights load only when load_service/main is called.
 
@@ -66,6 +66,10 @@ from hf_prompt_policies import (
 # Shared plan to native chat and tokens
 
 
+# Bounds inline images per request before any pixel tensors are produced.
+MAX_REQUEST_IMAGES = 16
+
+
 @dataclass(frozen=True)
 class Branch:
     """One compiled question, identified by its plan-local branch ID.
@@ -97,11 +101,15 @@ class CompiledRequest:
     matches plan order; the backend may reorder execution for efficient padding.
     binary_noul_keys identifies temporary Choice questions that the HF response
     adapter must restore to Noul after common scores their no/yes logits.
+    media holds request-shared processor tensors (pixel_values and companions)
+    consumed once per branch forward; branch token_ids already contain the
+    expanded image placeholder tokens.
     """
 
     plan: PromptPlan
     branches: list[Branch]
     binary_noul_keys: tuple[str, ...] = ()
+    media: dict | None = None
 
 
 def common_prefix(sequences):
@@ -124,14 +132,17 @@ def common_prefix(sequences):
 class PromptCompiler:
     """Render shared classifier plans with a model's native tokenizer template."""
 
-    def __init__(self, tokenizer, max_tokens=16384, version=DEFAULT_TEMPLATE_VERSION, prompt_policy="baseline", max_choice_options=255):
+    def __init__(self, tokenizer, max_tokens=16384, version=DEFAULT_TEMPLATE_VERSION, prompt_policy="baseline", max_choice_options=255, processor=None):
         """Store the renderer, complete-prompt token limit, and shared version.
 
         Version validation is performed by common.prepare_prompt during compile.
         Named prompt policies are startup-selected HF formatting/scoring adaptations.
-        This class does not load a tokenizer or model on its own.
+        processor is an optional multimodal Transformers processor; when present,
+        chat messages may carry inline base64 image content blocks. This class
+        does not load a tokenizer, processor, or model on its own.
         """
         self.tokenizer = tokenizer
+        self.processor = processor
         self.max_tokens = max_tokens
         self.version = version
         validate_policy(prompt_policy)
@@ -168,13 +179,15 @@ class PromptCompiler:
         return self._extended_choice_labels
 
     def compile(self, request: ClassifierRequest, *, render_only=False):
-        """Validate text input and compile one branch per shared-plan question.
+        """Validate input and compile one branch per shared-plan question.
 
         request may be a ClassifierRequest or an input dictionary. render_only
         returns roles/content and the shared plan for diagnostics/tests; it skips
         chat-template tokenization, token limits, and output-boundary checks.
         Such a result must not be sent to HFBackend.score.
 
+        Without a processor this adapter is text-only. With one, user/assistant
+        messages may carry text and inline base64 image_url content blocks.
         Unsupported media/tools, malformed token boundaries, and overlong prompts
         raise ValueError. Caller data is preserved when merging system messages.
         """
@@ -186,13 +199,16 @@ class PromptCompiler:
             raise ValueError(
                 "HF text reference does not support tools or media options"
             )
+        images, media_messages = None, None
         if request.messages and any(
             not isinstance(m.content, str)
             or m.model_extra
             or m.role in {"tool", "function"}
             for m in request.messages
         ):
-            raise ValueError("HF text reference accepts plain text chat only")
+            if self.processor is None:
+                raise ValueError("HF text reference accepts plain text chat only")
+            images, media_messages = self._prepare_media(request.messages)
 
         largest_choice = max((len(q.criteria) for q in request.questions.values()
                               if q.type == 'choice'), default=0)
@@ -204,6 +220,7 @@ class PromptCompiler:
         )
         system = plan.system_prompt_prefix + plan.prefix_instruction
         branches = []
+        media_inputs = None
         for question in plan.questions:
             content = plan.suffix_instruction + question.instruction
             # State is JSON-serialized, including quotes around string states.
@@ -219,8 +236,13 @@ class PromptCompiler:
                 ]
             else:
                 # Dump into new dictionaries so adding classifier instructions
-                # never mutates the caller's existing conversation.
-                messages = [m.model_dump(exclude_none=True) for m in request.messages]
+                # never mutates the caller's existing conversation. Normalized
+                # media messages already carry template-ready content blocks.
+                messages = (
+                    [dict(m) for m in media_messages]
+                    if media_messages is not None
+                    else [m.model_dump(exclude_none=True) for m in request.messages]
+                )
                 if messages[0]["role"] == "system":
                     messages[0]["content"] = system + "\n" + messages[0]["content"]
                 else:
@@ -235,7 +257,28 @@ class PromptCompiler:
                 # Render first, then append incomplete JSON to the open assistant
                 # position. Do not create a completed assistant message or add
                 # a closing brace/EOS before the next-token scoring position.
-                if self.prompt_policy == "baseline":
+                if media_messages is not None:
+                    # Named policies reject messages, so image requests always
+                    # take the baseline shape. Render string content as text
+                    # blocks for the processor's multimodal chat template.
+                    text = (
+                        self.processor.apply_chat_template(
+                            [
+                                {
+                                    **m,
+                                    "content": m["content"]
+                                    if isinstance(m["content"], list)
+                                    else [{"type": "text", "text": m["content"]}],
+                                }
+                                for m in messages
+                            ],
+                            tokenize=False,
+                            add_generation_prompt=True,
+                            enable_thinking=False,
+                        )
+                        + question.answer_prefix
+                    )
+                elif self.prompt_policy == "baseline":
                     text = (
                         self.tokenizer.apply_chat_template(
                             messages,
@@ -268,18 +311,37 @@ class PromptCompiler:
                         raise ValueError("Model chat template did not preserve fixed policy reasoning content")
                 # The template already supplies special tokens. Adding another
                 # BOS/EOS during encode would alter the intended model input.
-                ids = self.tokenizer.encode(text, add_special_tokens=False)
+                base = self.tokenizer.encode(text, add_special_tokens=False)
+                if media_messages is None:
+                    ids = base
+                else:
+                    # Processor IDs contain expanded image placeholder tokens.
+                    # All branches share the same images; keep one tensor set.
+                    encoded = self.processor(
+                        text=[text],
+                        images=images or None,
+                        return_tensors="pt",
+                        add_special_tokens=False,
+                    )
+                    ids = encoded["input_ids"][0].tolist()
+                    if media_inputs is None:
+                        media_inputs = {
+                            key: value
+                            for key, value in encoded.items()
+                            if key not in ("input_ids", "attention_mask")
+                        }
                 if not ids or len(ids) > self.max_tokens:
                     raise ValueError(
                         f"Branch for {question.question_id!r} must contain 1–{self.max_tokens} tokens"
                     )
                 # Derive IDs at the actual rendered boundary, not from isolated
-                # label encoding. Check every branch; templates/context can affect it.
+                # label encoding. Check every branch; templates/context can affect
+                # it. The unexpanded text encoding decides the label boundary.
                 for label in question.output_labels:
                     extended = self.tokenizer.encode(
                         text + label, add_special_tokens=False
                     )
-                    if len(extended) != len(ids) + 1 or extended[:-1] != ids:
+                    if len(extended) != len(base) + 1 or extended[:-1] != base:
                         raise ValueError(
                             f"Answer label {label!r} is not single-token stable"
                         )
@@ -296,7 +358,84 @@ class PromptCompiler:
                     reasoning_content,
                 )
             )
-        return CompiledRequest(plan, branches, binary_noul_keys)
+        return CompiledRequest(plan, branches, binary_noul_keys, media_inputs or None)
+
+    async def compile_async(self, request):
+        """Run blocking tokenization and image decoding off the event loop."""
+        return await asyncio.to_thread(self.compile, request)
+
+    def _prepare_media(self, source):
+        """Decode inline images and normalize messages for the processor template.
+
+        Only user/assistant turns may carry content blocks; a leading system turn
+        must stay a plain string because classifier instructions are merged into
+        it as text. Accepted blocks are OpenAI-style text and image_url objects.
+        """
+        images, messages = [], []
+        for message in source:
+            if message.model_extra or message.role in {"tool", "function"}:
+                raise ValueError(
+                    "Image chat accepts system/developer/user/assistant messages without extra fields"
+                )
+            content = message.content
+            if isinstance(content, str):
+                messages.append({"role": message.role, "content": content})
+                continue
+            if content is None or message.role not in {"user", "assistant"}:
+                raise ValueError(
+                    "Content blocks are supported only on user/assistant messages"
+                )
+            blocks = []
+            for block in content:
+                kind = block.get("type")
+                if kind == "text" and isinstance(block.get("text"), str):
+                    blocks.append({"type": "text", "text": block["text"]})
+                elif kind == "image_url":
+                    url = block.get("image_url")
+                    images.append(
+                        self._decode_image(url.get("url") if isinstance(url, dict) else None)
+                    )
+                    blocks.append({"type": "image"})
+                else:
+                    raise ValueError(
+                        "Message content blocks must be text or image_url objects"
+                    )
+            messages.append({"role": message.role, "content": blocks})
+        if len(images) > MAX_REQUEST_IMAGES:
+            raise ValueError(
+                f"Request has {len(images)} images; maximum is {MAX_REQUEST_IMAGES}"
+            )
+        return images, messages
+
+    @staticmethod
+    def _decode_image(url):
+        """Decode one inline base64 data URL into an RGB image.
+
+        Remote URL fetching is intentionally unsupported: the server never
+        performs outbound requests on behalf of a classifier client.
+        """
+        if not isinstance(url, str) or not url.startswith("data:image/"):
+            raise ValueError(
+                "Images must be inline data URLs like data:image/png;base64,..."
+            )
+        header, _, payload = url.partition(",")
+        if not header.endswith(";base64") or not payload:
+            raise ValueError("Image data URLs must use a base64 payload")
+        import base64
+        import binascii
+        import io
+
+        from PIL import Image
+
+        try:
+            raw = base64.b64decode(payload, validate=True)
+            image = Image.open(io.BytesIO(raw))
+            # Force the full decode so truncated or oversized data fails here
+            # with a 422, not inside the model processor.
+            image.load()
+        except (binascii.Error, OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise ValueError("Image data URL could not be decoded") from exc
+        return image.convert("RGB")
 
 
 # Inference result
@@ -397,6 +536,8 @@ class HFBackend:
             if stop.is_set():
                 raise asyncio.CancelledError()
             start = time.perf_counter()
+            if compiled.media:
+                return self._score_media(compiled, stop, start)
             sequences = [b.token_ids for b in compiled.branches]
             if not sequences or any(not ids for ids in sequences):
                 raise ValueError("Expected nonempty scoring prompts")
@@ -522,6 +663,68 @@ class HFBackend:
                     "backend_seconds": time.perf_counter() - start,
                 },
             )
+
+    def _score_media(self, compiled, stop, start):
+        """Score image branches with independent full-prompt forwards.
+
+        Multimodal models may derive nonstandard position information from
+        their media inputs (for example M-RoPE), so the shared-prefix cache
+        continuation is not reused here. Each branch is one unpadded row that
+        receives the request's shared media tensors; correctness over reuse.
+        Caller holds the model lock and inference mode.
+        """
+        import torch
+
+        weight = self.model.get_input_embeddings().weight
+        device, dtype = weight.device, weight.dtype
+        media = {
+            key: value.to(device=device, dtype=dtype)
+            if isinstance(value, torch.Tensor) and value.is_floating_point()
+            else value.to(device)
+            if isinstance(value, torch.Tensor)
+            else value
+            for key, value in compiled.media.items()
+        }
+        extra = {"logits_to_keep": 1} if self._last_logits else {}
+        results = {}
+        total = 0
+        for branch in compiled.branches:
+            if stop.is_set():
+                raise asyncio.CancelledError()
+            if not branch.token_ids:
+                raise ValueError("Expected nonempty scoring prompts")
+            if len(branch.token_ids) > self.max_batch_tokens:
+                raise ValueError("An image branch exceeds max_batch_tokens")
+            ids = torch.tensor([branch.token_ids], device=device)
+            out = self.model(
+                input_ids=ids,
+                attention_mask=torch.ones_like(ids),
+                use_cache=False,
+                **media,
+                **extra,
+            )
+            results[branch.branch_id] = (
+                out.logits[0, -1, branch.output_ids].float().cpu()
+            )
+            total += len(branch.token_ids)
+            del out
+        return BackendResult(
+            results,
+            {
+                "backend": "transformers",
+                "prefill_strategy": "independent_full_prompts",
+                "prefix_tokens": 0,
+                "suffix_batch_sizes": [1] * len(compiled.branches),
+                "engine_forwards": len(compiled.branches),
+                "branch_prompt_tokens": total,
+                "computed_prompt_tokens": total,
+                "logical_prefill_tokens": total,
+                "padded_suffix_tokens": 0,
+                "branch_output_tokens": 0,
+                "scored_positions": len(compiled.branches),
+                "backend_seconds": time.perf_counter() - start,
+            },
+        )
 
 
 # Request admission and response assembly
@@ -1031,6 +1234,7 @@ def load_service(
     served_model_name=None,
     enforce_model_id=False,
     max_choice_options=255,
+    enable_images=False,
 ):
     """Load a model and return a ready-to-use service, without starting HTTP.
 
@@ -1055,6 +1259,8 @@ def load_service(
     public_model = served_model_name if served_model_name is not None else model_name
     if backend == "laya" and prompt_policy not in (None, "baseline"):
         raise ValueError("Prompt policies apply only to --backend transformers; Laya uses native formatting")
+    if backend == "laya" and enable_images:
+        raise ValueError("--enable-images requires --backend transformers")
     if backend == "laya":
         # Resolve the revision ourselves because the SDK does not expose it.
         # Import only when selected; the existing HF installation stays usable.
@@ -1118,16 +1324,25 @@ def load_service(
     config = AutoConfig.from_pretrained(model_name, revision=revision)
     prompt_policy, policy_selection = resolve_prompt_policy(config, prompt_policy)
     configure_rope(config, rope_factor)
+    processor = None
+    if enable_images:
+        from transformers import AutoProcessor
+
+        processor = AutoProcessor.from_pretrained(model_name, revision=revision)
+        if getattr(processor, "image_processor", None) is None:
+            raise ValueError(
+                "--enable-images requires a vision model with an image processor"
+            )
     # These checkpoint families use the image/text auto-loader even for text
-    # scoring. This selection does not enable image input: the compiler remains
-    # text-only and rejects unsupported media/tool requests.
+    # scoring. Loader selection alone does not enable image input: inline
+    # images additionally require --enable-images and a model processor.
     loader = (
         AutoModelForImageTextToText
-        if config.model_type in {"gemma4", "qwen3_5", "qwen3_5_moe"}
+        if enable_images or config.model_type in {"gemma4", "qwen3_5", "qwen3_5_moe"}
         else AutoModelForCausalLM
     )
     compiler = PromptCompiler(tokenizer, max_tokens=max_model_len, prompt_policy=prompt_policy,
-                              max_choice_options=max_choice_options)
+                              max_choice_options=max_choice_options, processor=processor)
     compiler.validate_choice_capacity()
     model = loader.from_pretrained(
         model_name,
@@ -1157,6 +1372,7 @@ def load_service(
             "prompt_policy_selection": policy_selection,
             "model_revision": revision,
             "rope_factor": rope_factor,
+            "images_enabled": enable_images,
         },
     )
 
@@ -1183,6 +1399,10 @@ def main():
     )
     parser.add_argument(
         "--backend", choices=["transformers", "laya"], default="transformers"
+    )
+    parser.add_argument(
+        "--enable-images", action="store_true",
+        help="Accept inline base64 data-URL images in chat messages (vision models, transformers backend only)",
     )
     parser.add_argument(
         "--subfolder", help="Laya checkpoint subfolder, e.g. multilingual"

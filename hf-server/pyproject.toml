@@ -17,7 +17,8 @@ simple-jev = "hf_server:main"
 # Testing is optional at runtime; tiny-model tests create weights locally.
 [project.optional-dependencies]
 laya = ["laya==0.3.4"]
-test = ["pytest", "pytest-asyncio", "httpx"]
+images = ["pillow"]
+test = ["pytest", "pytest-asyncio", "httpx", "pillow"]
 
 # Include the shared modules in an HF wheel without introducing a separate
 # common distribution. Build/install from a checkout containing both folders.
